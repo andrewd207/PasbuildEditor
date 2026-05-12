@@ -2837,6 +2837,7 @@ const
 var
   GoalMenu:    TMenu;
   GoalSel:     TMenuItem;
+  It:          TMenuItem;
   GoalSelRow:  Integer;
   Goal:        string;
   Proc:       TProcess;
@@ -3090,17 +3091,17 @@ begin
       GoalMenu := TMenu.Create(FBreadcrumb + ' > Run build');
       try
         GoalMenu.AddHeader('Built-in');
-        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('clea&n',                  nil, '', 'Delete all build artifacts'));
-        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('p&rocess-resources',      nil, '', 'Copy resources to target directory'));
-        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('&compile',                nil, '', 'Build the executable (runs: process-resources -> compile)'));
-        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('pr&ocess-test-resources', nil, '', 'Copy test resources to target directory'));
-        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('test-co&mpile',           nil, '', 'Compile tests (runs: compile -> process-test-resources -> test-compile)'));
-        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('&test',                   nil, '', 'Run tests (runs: compile -> process-test-resources -> test-compile -> test)'));
-        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('&package',                nil, '', 'Create release archive (runs: clean -> compile -> package)'));
-        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('&source-package',         nil, '', 'Create source archive with src/, docs, and configured files'));
-        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('&install',                nil, '', 'Install compiled units to local repository (~/.pasbuild/repository/)'));
-        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('&dependency-tree',        nil, '', 'Show project dependency tree (no compilation)'));
-        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('resol&ve',                nil, '', 'Output resolved build configuration as JSON (no compilation)'));
+        It := TMenuItem.CreateEmbeddedHotkey('clea&n',                  nil); It.Desc := 'Delete all build artifacts';                                             GoalMenu.Add(It);
+        It := TMenuItem.CreateEmbeddedHotkey('p&rocess-resources',      nil); It.Desc := 'Copy resources to target directory';                                     GoalMenu.Add(It);
+        It := TMenuItem.CreateEmbeddedHotkey('&compile',                nil); It.Desc := 'Build the executable (runs: process-resources -> compile)';              GoalMenu.Add(It);
+        It := TMenuItem.CreateEmbeddedHotkey('pr&ocess-test-resources', nil); It.Desc := 'Copy test resources to target directory';                                GoalMenu.Add(It);
+        It := TMenuItem.CreateEmbeddedHotkey('test-co&mpile',           nil); It.Desc := 'Compile tests (runs: compile -> process-test-resources -> test-compile)'; GoalMenu.Add(It);
+        It := TMenuItem.CreateEmbeddedHotkey('&test',                   nil); It.Desc := 'Run tests (runs: compile -> process-test-resources -> test-compile -> test)'; GoalMenu.Add(It);
+        It := TMenuItem.CreateEmbeddedHotkey('&package',                nil); It.Desc := 'Create release archive (runs: clean -> compile -> package)';             GoalMenu.Add(It);
+        It := TMenuItem.CreateEmbeddedHotkey('&source-package',         nil); It.Desc := 'Create source archive with src/, docs, and configured files';            GoalMenu.Add(It);
+        It := TMenuItem.CreateEmbeddedHotkey('&install',                nil); It.Desc := 'Install compiled units to local repository (~/.pasbuild/repository/)';   GoalMenu.Add(It);
+        It := TMenuItem.CreateEmbeddedHotkey('&dependency-tree',        nil); It.Desc := 'Show project dependency tree (no compilation)';                          GoalMenu.Add(It);
+        It := TMenuItem.CreateEmbeddedHotkey('resol&ve',                nil); It.Desc := 'Output resolved build configuration as JSON (no compilation)';           GoalMenu.Add(It);
         //GoalMenu.Add(TMenuItem.Create('init',                   nil, '', 'U', 'Create new project structure')); // disable this one.
         ProjectDir  := ExtractFilePath(ExpandFileName(FProject.FileName));
         PluginsSeen := TStringList.Create;
@@ -3366,7 +3367,14 @@ begin
       case Sel.Label_ of
         'Name':
           if EditLine('Name', FProject.Name, NewVal, Menu.SelectedRow) then
-            begin FProject.Name := NewVal; SetModified; end;
+            begin
+              if Trim(NewVal) = '' then
+              begin
+                ShowStatusMsg('Name cannot be blank!', clRed);
+                Continue;
+              end;
+              FProject.Name := NewVal; SetModified;
+            end;
         'Version':
           if EditLine('Version', FProject.Version, NewVal, Menu.SelectedRow) then
             begin FProject.Version := NewVal; SetModified; end;
