@@ -168,7 +168,7 @@ end;
 
 function TUnixTerminal.ReadKey: TKeyEvent;
 var
-  B, B2, B3, B4, Bx: Byte;
+  B, B2, B3, B4, B5, Bx: Byte;
 begin
   Result.Code := kcNone;
   Result.Ch   := #0;
@@ -203,6 +203,16 @@ begin
           Ord('5'): begin ReadByte(Bx, 50); Result.Code := kcPageUp; end;
           Ord('6'): begin ReadByte(Bx, 50); Result.Code := kcPageDown; end;
           Ord('3'): begin ReadByte(Bx, 50); Result.Code := kcDelete; end;
+          Ord('1'): begin
+            { ESC [ 1 ; 5 C  = Ctrl+Right,  ESC [ 1 ; 5 D = Ctrl+Left }
+            if ReadByte(B4, 50) and (B4 = Ord(';')) and
+               ReadByte(B5, 50) and (B5 = Ord('5')) and
+               ReadByte(Bx, 50) then
+            begin
+              if Bx = Ord('C') then Result.Code := kcCtrlRight
+              else if Bx = Ord('D') then Result.Code := kcCtrlLeft;
+            end;
+          end;
           Ord('['): begin
             if ReadByte(B4, 50) and (B4 = Ord('A')) then
               Result.Code := kcF1;

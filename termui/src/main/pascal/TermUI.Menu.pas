@@ -682,30 +682,73 @@ end;
 function EditLine(const APrompt, ACurrent: string; var AResult: string;
   ARow: Integer = 0): Boolean;
 var
-  Row, Col, W: Integer;
-  Buf:         string;
-  K:           TKeyEvent;
+  Row, PromptLen, FieldW: Integer;
+  Buf:    string;
+  Cur:    Integer;  { 1..Length(Buf)+1 }
+  Scroll: Integer;  { index of leftmost visible char (0-based) }
+  ViewCur: Integer;
+  K:      TKeyEvent;
+
+  procedure EnsureVisible;
+  begin
+    ViewCur := Cur - Scroll;
+    if ViewCur < 1 then
+    begin
+      Scroll  := Cur - 1;
+      ViewCur := 1;
+    end;
+    if ViewCur > FieldW then
+    begin
+      Scroll  := Cur - FieldW;
+      ViewCur := FieldW;
+    end;
+  end;
+
+  function WordLeft: Integer;
+  var I: Integer;
+  begin
+    I := Cur - 1;
+    while (I > 1) and (Buf[I - 1] = ' ') do Dec(I);
+    while (I > 1) and (Buf[I - 1] <> ' ') do Dec(I);
+    Result := I;
+  end;
+
+  function WordRight: Integer;
+  var I, Len: Integer;
+  begin
+    Len := Length(Buf);
+    I   := Cur;
+    while (I <= Len) and (Buf[I] <> ' ') do Inc(I);
+    while (I <= Len) and (Buf[I] = ' ') do Inc(I);
+    Result := I;
+  end;
+
 begin
   Buf    := ACurrent;
+  Cur    := Length(Buf) + 1;
+  Scroll := 0;
   Result := False;
+
   if ARow <= 0 then
     Row := Term.Height div 2
   else
     Row := ARow;
-  W      := Term.Width;
+
+  PromptLen := 1 + Length(APrompt) + 2;  { ' ' + prompt + ': ' }
+  FieldW    := Term.Width - PromptLen;
+  if FieldW < 4 then FieldW := 4;
 
   Term.ShowCursor;
   repeat
+    EnsureVisible;
     Term.GotoXY(1, Row);
     Term.ClearToEOL;
     Term.SetFG(clBrightYellow);
     Term.WriteStr(' ' + APrompt + ': ');
     Term.SetFG(clWhite);
-    Term.WriteStr(Buf);
+    Term.WriteStr(Copy(Buf, Scroll + 1, FieldW));
     Term.ClearToEOL;
-    Col := 1 + Length(APrompt) + 2 + Length(Buf) + 1;
-    if Col > W then Col := W;
-    Term.GotoXY(Col, Row);
+    Term.GotoXY(PromptLen + ViewCur, Row);
     Term.FlushOutput;
 
     K := Term.ReadKey;
@@ -716,10 +759,27 @@ begin
         Break;
       end;
       kcEscape: Break;
-      kcBackspace: if Length(Buf) > 0 then
-        Delete(Buf, Length(Buf), 1);
-      kcChar: if K.Ch >= ' ' then
-        Buf := Buf + K.Ch;
+      kcLeft:      if Cur > 1 then Dec(Cur);
+      kcRight:     if Cur <= Length(Buf) then Inc(Cur);
+      kcHome:      Cur := 1;
+      kcEnd:       Cur := Length(Buf) + 1;
+      kcCtrlLeft:  Cur := WordLeft;
+      kcCtrlRight: Cur := WordRight;
+      kcBackspace:
+        if Cur > 1 then
+        begin
+          Delete(Buf, Cur - 1, 1);
+          Dec(Cur);
+        end;
+      kcDelete:
+        if Cur <= Length(Buf) then
+          Delete(Buf, Cur, 1);
+      kcChar:
+        if K.Ch >= ' ' then
+        begin
+          Insert(K.Ch, Buf, Cur);
+          Inc(Cur);
+        end;
     end;
   until False;
 

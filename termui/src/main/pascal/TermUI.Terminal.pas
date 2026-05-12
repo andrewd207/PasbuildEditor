@@ -17,6 +17,7 @@ type
   TKeyCode = (
     kcNone,
     kcUp, kcDown, kcLeft, kcRight,
+    kcCtrlLeft, kcCtrlRight,
     kcEnter, kcEscape, kcBackspace, kcDelete,
     kcHome, kcEnd, kcPageUp, kcPageDown, kcTab,
     kcChar,
