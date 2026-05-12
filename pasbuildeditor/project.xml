@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <project>
-  <name>editor</name>
+  <name>pasbuildeditor-editor</name>
   <version>1.0.0</version>
   <author>Andrew Haines &lt;andrewd207@github&gt;</author>
   <license>BSD-3-Clause</license>
