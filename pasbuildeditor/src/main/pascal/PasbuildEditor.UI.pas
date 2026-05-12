@@ -2780,10 +2780,18 @@ begin
       GoalMenu := TMenu.Create(FBreadcrumb + ' > Run build');
       try
         GoalMenu.AddHeader('Built-in');
-        GoalMenu.Add(TMenuItem.Create('clean',   nil, '', 'N'));
-        GoalMenu.Add(TMenuItem.Create('compile', nil, '', 'C'));
-        GoalMenu.Add(TMenuItem.Create('test',    nil, '', 'T'));
-        GoalMenu.Add(TMenuItem.Create('install', nil, '', 'I'));
+        GoalMenu.Add(TMenuItem.Create('clean',                  nil, '', 'N', 'Delete all build artifacts'));
+        GoalMenu.Add(TMenuItem.Create('process-resources',      nil, '', 'R', 'Copy resources to target directory'));
+        GoalMenu.Add(TMenuItem.Create('compile',                nil, '', 'C', 'Build the executable (runs: process-resources -> compile)'));
+        GoalMenu.Add(TMenuItem.Create('process-test-resources', nil, '', 'O', 'Copy test resources to target directory'));
+        GoalMenu.Add(TMenuItem.Create('test-compile',           nil, '', 'M', 'Compile tests (runs: compile -> process-test-resources -> test-compile)'));
+        GoalMenu.Add(TMenuItem.Create('test',                   nil, '', 'T', 'Run tests (runs: compile -> process-test-resources -> test-compile -> test)'));
+        GoalMenu.Add(TMenuItem.Create('package',                nil, '', 'P', 'Create release archive (runs: clean -> compile -> package)'));
+        GoalMenu.Add(TMenuItem.Create('source-package',         nil, '', 'S', 'Create source archive with src/, docs, and configured files'));
+        GoalMenu.Add(TMenuItem.Create('install',                nil, '', 'I', 'Install compiled units to local repository (~/.pasbuild/repository/)'));
+        GoalMenu.Add(TMenuItem.Create('dependency-tree',        nil, '', 'D', 'Show project dependency tree (no compilation)'));
+        GoalMenu.Add(TMenuItem.Create('resolve',                nil, '', 'V', 'Output resolved build configuration as JSON (no compilation)'));
+        //GoalMenu.Add(TMenuItem.Create('init',                   nil, '', 'U', 'Create new project structure')); // disable this one.
         ProjectDir  := ExtractFilePath(ExpandFileName(FProject.FileName));
         PluginsSeen := TStringList.Create;
         try
