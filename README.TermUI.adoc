@@ -1,0 +1,161 @@
+= TermUI
+Andrew Haines <andrewd207@github>
+:toc: left
+:icons: font
+
+A small, self-contained Free Pascal library for building keyboard-driven full-screen terminal UIs. It provides a double-buffered terminal abstraction, a menu widget, an inline line editor, and a recursive file/directory picker.
+
+== Units
+
+[cols="1,3"]
+|===
+| `TermUI.Terminal`          | Double-buffered terminal base class (`TTerminal`). Platform implementations register themselves via `RegisterTerminalFactory`.
+| `TermUI.Menu`              | Menu widget, inline editor, confirmation prompt, and drawing helpers.
+| `TermUI.PathPicker`        | Full-screen recursive path picker.
+|===
+
+A platform unit (`TermUI.Terminal.Platform`) must be compiled into the *application*, not the library. The Unix implementation lives in `src/platform/unix/`.
+
+== Setup
+
+In your application's `uses` clause include the platform unit so the factory is registered before `Term` is first accessed:
+
+[source,pascal]
+----
+uses
+  TermUI.Terminal,
+  TermUI.Terminal.Platform,  { registers the platform implementation }
+  TermUI.Menu;
+----
+
+Set `AppTitle` and `AppVersion` before entering raw mode:
+
+[source,pascal]
+----
+AppTitle   := 'MyApp';
+AppVersion := '1.0';
+Term.EnableRawMode;
+{ ... UI loop ... }
+Term.DisableRawMode;
+----
+
+`Term` is a global `TTerminal` instance created automatically when the unit is initialised.
+
+== TMenu
+
+Build a menu by creating a `TMenu`, adding items, then calling `Run`. `Run` blocks until the user selects an item, presses Escape/Left (returns `nil`), or presses a global signal key.
+
+[source,pascal]
+----
+var
+  Menu: TMenu;
+  Sel:  TMenuItem;
+begin
+  Menu := TMenu.Create('My Menu');
+  try
+    Menu.AddHeader('Section');
+    Menu.Add(TMenuItem.Create('First option',  @DoFirst,  '', 'F'));
+    Menu.Add(TMenuItem.Create('Second option', @DoSecond, '', 'S'));
+    Menu.AddSeparator;
+    Menu.Add(TMenuItem.Create('Quit', nil, '', 'Q'));
+    Sel := Menu.Run;
+    if Assigned(Sel) and Assigned(Sel.Action) then
+      Sel.Action;
+  finally
+    Menu.Free;
+  end;
+end;
+----
+
+`TMenuItem` fields of note:
+
+[cols="1,3"]
+|===
+| `Value`     | Secondary text rendered right-aligned in green.
+| `Desc`      | One-line description shown in the status bar when the item is selected.
+| `Hotkey`    | Single character that jumps to this item directly.
+| `DimValue`  | Render `Value` in grey (e.g. `(none)` placeholders).
+| `DimItem`   | Render the entire row in grey (e.g. inactive modules).
+|===
+
+After `Run` returns check `Menu.ExitedLeft` (left-arrow back vs. Escape), `Menu.DeletePressed` (Del key on selection), `Menu.F1Pressed`, and `Menu.UnhandledChar` (unrecognised keystroke).
+
+Incremental search is built in: typing any printable character filters the visible items.
+
+== EditLine
+
+Inline single-line text editor. Opens at the selected menu row (or vertically centred if `ARow` is 0).
+
+[source,pascal]
+----
+var S: string;
+begin
+  S := CurrentValue;
+  if EditLine('New name', S, S) then
+    { user confirmed — S holds the new value };
+end;
+----
+
+== Confirm
+
+[source,pascal]
+----
+if Confirm('Delete this profile?') then
+  { ... };
+----
+
+Default answer is No. Pass `True` as the second argument to make Yes the default.
+
+== ShowStatusMsg
+
+Writes an ephemeral message at the bottom of the screen and waits for a key.
+
+[source,pascal]
+----
+ShowStatusMsg('Saved.', clBrightGreen);
+ShowStatusMsg('Error: file not found.', clRed);
+----
+
+== RunPathPicker
+
+Full-screen file/directory browser. Returns `True` when the user accepts a selection; the chosen path is written back via `APath`.
+
+[source,pascal]
+----
+var P: string;
+begin
+  P := '/home/user';
+  if RunPathPicker('/home/user', 'Select project directory', True, P) then
+    { P now holds the chosen directory };
+end;
+----
+
+Pass `ADirsOnly = False` to allow file selection as well.
+
+== Global Signals
+
+Four boolean globals are set by `TMenu.Run` in response to special key chords and are intended to be polled by the application's main loop:
+
+[cols="1,1,3"]
+|===
+| Variable          | Key     | Meaning
+| `GQuitRequested`  | Esc / Q | User wants to exit.
+| `GSaveRequested`  | Ctrl-S  | User requested an explicit save.
+| `GCtrlXRequested` | Ctrl-X  | User requested save-and-quit.
+| `GCtrlCRequested` | Ctrl-C  | Hard interrupt.
+|===
+
+== Drawing Helpers
+
+[cols="1,3"]
+|===
+| `DrawHeader(Breadcrumb, Row)` | Renders the title bar with app name, version, and breadcrumb path.
+| `DrawRule(Row, Col, Width)`   | Draws a horizontal separator line.
+| `PadRight(S, Width)`          | Right-pads a string with spaces to the given width.
+| `JoinTruncated(List, Sep, MaxLen)` | Joins list items with a separator, appending `...` if the result exceeds `MaxLen`.
+| `IsValidIdentifier(S)`        | Returns `True` if `S` is a valid Pascal identifier.
+|===
+
+== License
+
+BSD 3-Clause. See `LICENSE` in the repository root.

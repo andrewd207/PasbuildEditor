@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+  <name>termui</name>
+  <version>1.0.0</version>
+  <author>Andrew Haines &lt;andrewd207@github&gt;</author>
+  <license>BSD-3-Clause</license>
+  <build>
+    <packaging>library</packaging>
+    <sourceDirectory>src/main/pascal</sourceDirectory>
+  </build>
+</project>

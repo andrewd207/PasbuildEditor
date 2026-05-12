@@ -1,0 +1,54 @@
+= PasbuildEditor
+Andrew Haines <andrewd207@github>
+:toc: left
+:icons: font
+
+A terminal-based editor for https://github.com/graemeg/PasBuild[PasBuild] `project.xml` files, written in Free Pascal.
+
+== Overview
+
+PasBuild is a Maven-inspired build tool for Free Pascal projects. Its `project.xml` files describe build settings, unit paths, profiles, module dependencies, and more. Editing these files by hand is error-prone. PasbuildEditor provides a keyboard-driven, full-screen terminal UI for browsing and editing them safely.
+
+== Features
+
+* Open any `project.xml` — application, library, or POM (multi-module aggregator).
+* Edit all standard fields: name, version, author, license, source directories, unit paths, executable name, compiler options, defines, and more.
+* Add, remove, and reorder build profiles with platform-conditional settings.
+* Manage POM child modules and module dependencies.
+* Navigate a breadcrumb hierarchy — drill into a sub-project and back out with the left arrow.
+* Incremental search within menus (type to filter).
+* Auto-save on Ctrl-X; explicit save on Ctrl-S.
+
+== Project Structure
+
+The repository is itself a PasBuild POM project with two submodules:
+
+[cols="1,3"]
+|===
+| `termui/`         | Reusable Free Pascal terminal UI library (see `README.TermUI.adoc`).
+| `pasbuildeditor/` | The editor application.
+|===
+
+== Building
+
+You need Free Pascal 3.x and PasBuild installed.
+
+[source,shell]
+----
+pasbuild compile
+----
+
+The binary is written to `pasbuildeditor/target/pasbuildeditor`.
+
+== Usage
+
+[source,shell]
+----
+pasbuildeditor [project.xml]
+----
+
+If no path is given the editor looks for `project.xml` in the current directory. Navigation is entirely keyboard-driven: arrow keys move between items, Enter opens a sub-menu, Escape or the left arrow goes back, and hotkeys (shown highlighted) jump directly to items.
+
+== License
+
+BSD 3-Clause. See `LICENSE`.

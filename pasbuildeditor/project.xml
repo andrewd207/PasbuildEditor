@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+  <name>pasbuildeditor</name>
+  <version>1.0.0</version>
+  <author>Andrew Haines &lt;andrewd207@github&gt;</author>
+  <license>BSD-3-Clause</license>
+  <build>
+    <packaging>application</packaging>
+    <mainSource>Main.pas</mainSource>
+    <outputDirectory>target</outputDirectory>
+    <sourceDirectory>src/main/pascal</sourceDirectory>
+    <executableName>pasbuildeditor</executableName>
+    <manualUnitPaths>true</manualUnitPaths>
+    <unitPaths>
+      <path>src/main/pascal</path>
+      <path condition="LINUX">src/platform/unix</path>
+      <path condition="DARWIN">src/platform/unix</path>
+      <path condition="WINDOWS">src/platform/windows</path>
+    </unitPaths>
+  </build>
+  <moduleDependencies>
+    <module>../termui</module>
+  </moduleDependencies>
+</project>
