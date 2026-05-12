@@ -5,6 +5,12 @@
   <license>BSD-3-Clause</license>
   <build>
     <packaging>library</packaging>
+    <manualUnitPaths>true</manualUnitPaths>
+    <unitPaths>
+      <path condition="WINDOWS">src/main/pascal/platform/windows/</path>
+      <path condition="LINUX">src/main/pascal/platform/unix/</path>
+      <path>src/main/pascal/</path>
+    </unitPaths>
   </build>
   <description>A text based screen drawing library with some routines to make a menu interface</description>
 </project>

@@ -7,13 +7,6 @@
     <packaging>application</packaging>
     <mainSource>Main.pas</mainSource>
     <executableName>pb-editor</executableName>
-    <manualUnitPaths>true</manualUnitPaths>
-    <unitPaths>
-      <path>src/main/pascal</path>
-      <path condition="LINUX">src/platform/unix</path>
-      <path condition="DARWIN">src/platform/unix</path>
-      <path condition="WINDOWS">src/platform/windows</path>
-    </unitPaths>
     <resources>
       <filtering>true</filtering>
     </resources>
