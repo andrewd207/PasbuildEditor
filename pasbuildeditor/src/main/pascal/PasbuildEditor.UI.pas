@@ -2576,8 +2576,8 @@ var
 
   procedure Draw;
   var
-    Row, LineIdx, J: Integer;
-    StatusStr:       string;
+    Row, LineIdx, J, TagEnd: Integer;
+    StatusStr:               string;
   begin
     ComputeVisible;
     Term.ClearScreen;
@@ -2585,7 +2585,7 @@ var
     { Row 1: breadcrumb }
     ColorHeader;
     Term.GotoXY(1, 1);
-    Term.WriteStr(' ' + FBreadcrumb + ' > Run build');
+    Term.WriteStr(' ' + FBreadcrumb + ' > Run build > Run output');
     Term.ClearToEOL;
     Term.ResetColors;
 
@@ -2633,8 +2633,8 @@ var
         if Length(S) > Term.Width then S := Copy(S, 1, Term.Width);
         if Copy(S, 1, 7) = '[INFO] ' then
         begin
-          Term.SetFG(clBlue); Term.WriteStr('[INFO]');
-          Term.ResetColors;   Term.WriteStr(Copy(S, 7, MaxInt));
+          Term.SetFG(clBlue);   Term.WriteStr('[INFO]');
+          Term.ResetColors;     Term.WriteStr(Copy(S, 7, MaxInt));
         end
         else if Copy(S, 1, 10) = '[WARNING] ' then
         begin
@@ -2643,8 +2643,20 @@ var
         end
         else if Copy(S, 1, 8) = '[ERROR] ' then
         begin
-          Term.SetFG(clRed); Term.WriteStr('[ERROR]');
-          Term.ResetColors;  Term.WriteStr(Copy(S, 8, MaxInt));
+          Term.SetFG(clRed);    Term.WriteStr('[ERROR]');
+          Term.ResetColors;     Term.WriteStr(Copy(S, 8, MaxInt));
+        end
+        else if (Length(S) > 1) and (S[1] = '[') then
+        begin
+          { Custom plugin tag: find closing ']' and colour the whole [TAG] block }
+          TagEnd := Pos('] ', S);
+          if TagEnd > 1 then
+          begin
+            Term.SetFG(clBrightCyan); Term.WriteStr(Copy(S, 1, TagEnd));
+            Term.ResetColors;         Term.WriteStr(Copy(S, TagEnd + 1, MaxInt));
+          end
+          else
+            Term.WriteStr(S);
         end
         else
           Term.WriteStr(S);
@@ -2658,7 +2670,7 @@ var
     if Running then
       Term.WriteStr(' [Up/Down/PgUp/PgDn] scroll   [Ctrl+C] cancel')
     else
-      Term.WriteStr(' [Up/Down/PgUp/PgDn] scroll   [Enter/Esc] close');
+      Term.WriteStr(' [Up/Down/PgUp/PgDn] scroll   [Enter/Esc] back');
     Term.ClearToEOL;
     Term.ResetColors;
 
@@ -2747,7 +2759,7 @@ var
           D         := #0;
           ItemLabel := PlugGoal;
         end;
-        GoalMenu.Add(TMenuItem.Create(ItemLabel, nil, '(plugin)', D));
+        GoalMenu.Add(TMenuItem.Create(ItemLabel, nil, PlugGoal, D));
       until FindNext(SR) <> 0;
     finally
       FindClose(SR);
@@ -2755,118 +2767,137 @@ var
   end;
 
 var
-  ProjectDir:  string;
-  PluginsSeen: TStringList;
+  ProjectDir:    string;
+  PluginsSeen:   TStringList;
+  LastGoalLabel: string;
 begin
-  { Goal selection }
-  GoalMenu := TMenu.Create('Run build — choose goal');
-  try
-    GoalMenu.AddHeader('Built-in');
-    GoalMenu.Add(TMenuItem.Create('clean',   nil, '', 'N'));
-    GoalMenu.Add(TMenuItem.Create('compile', nil, '', 'C'));
-    GoalMenu.Add(TMenuItem.Create('test',    nil, '', 'T'));
-    { Discover plugins: local plugins/ first, then ~/.pasbuild/plugins/ }
-    ProjectDir  := ExtractFilePath(ExpandFileName(FProject.FileName));
-    PluginsSeen := TStringList.Create;
-    try
-      GoalMenu.AddHeader('Plugins');
-      AddPluginsFromDir(IncludeTrailingPathDelimiter(ProjectDir) + 'plugins', PluginsSeen);
-      AddPluginsFromDir(IncludeTrailingPathDelimiter(GetUserDir) + '.pasbuild/plugins', PluginsSeen);
-    finally
-      PluginsSeen.Free;
-    end;
-    GoalMenu.AddHeader('Other');
-    GoalMenu.Add(TMenuItem.Create('(custom)', nil, '', 'M'));
-    GoalSel := GoalMenu.Run;
-    { Cancel from goal picker: clear flags so they don't propagate to RunProjectMenu }
-    GCtrlCRequested := False;
-    GCtrlXRequested := False;
-    if GQuitRequested or (GoalSel = nil) then Exit;
-    Goal        := GoalSel.Label_;
-    GoalSelRow  := GoalMenu.SelectedRow;
-  finally
-    GoalMenu.Free;
-  end;
-
-  if Goal = '(custom)' then
-  begin
-    if not EditLine('Goal', '', Goal, GoalSelRow) or (Goal = '') then Exit;
-  end;
-
-  Lines     := TStringList.Create;
-  Proc      := TProcess.Create(nil);
-  try
-    Proc.Executable      := 'pasbuild';
-    Proc.Parameters.Add(Goal);
-    Proc.CurrentDirectory := ExtractFilePath(ExpandFileName(FProject.FileName));
-    Proc.Options          := [poUsePipes, poStderrToOutput];
-
-    StartTime  := Now;
-    ScrollOff  := 0;
-    AutoScroll := True;
-    Partial    := '';
-    ExitCode   := 0;
-    Running    := True;
-    Dirty      := True;
-
-    Proc.Execute;
-
-    { Main poll loop }
+  LastGoalLabel := '';
+  { Outer loop: goal picker → run → back to picker on Enter/Esc }
+  repeat
+    { Goal selection — inner loop so ESC in custom EditLine returns to picker }
+    Goal := '';
     repeat
-      DrainOutput;
+      GoalMenu := TMenu.Create(FBreadcrumb + ' > Run build');
+      try
+        GoalMenu.AddHeader('Built-in');
+        GoalMenu.Add(TMenuItem.Create('clean',   nil, '', 'N'));
+        GoalMenu.Add(TMenuItem.Create('compile', nil, '', 'C'));
+        GoalMenu.Add(TMenuItem.Create('test',    nil, '', 'T'));
+        GoalMenu.Add(TMenuItem.Create('install', nil, '', 'I'));
+        ProjectDir  := ExtractFilePath(ExpandFileName(FProject.FileName));
+        PluginsSeen := TStringList.Create;
+        try
+          GoalMenu.AddHeader('Plugins');
+          AddPluginsFromDir(IncludeTrailingPathDelimiter(ProjectDir) + 'plugins', PluginsSeen);
+          AddPluginsFromDir(IncludeTrailingPathDelimiter(GetUserDir) + '.pasbuild/plugins', PluginsSeen);
+        finally
+          PluginsSeen.Free;
+        end;
+        GoalMenu.AddHeader('Other');
+        GoalMenu.Add(TMenuItem.Create('(custom)', nil, '', 'M'));
+        if LastGoalLabel <> '' then GoalMenu.SelectByLabel(LastGoalLabel);
+        GoalSel := GoalMenu.Run;
+        GCtrlCRequested := False;
+        GCtrlXRequested := False;
+        if GQuitRequested or (GoalSel = nil) then Exit;
+        LastGoalLabel := GoalSel.Label_;
+        { Use Value for plugin items (stores bare goal); fall back to trimmed label }
+        if GoalSel.Value <> '' then
+          Goal := GoalSel.Value
+        else
+          Goal := Trim(GoalSel.Label_);
+        GoalSelRow := GoalMenu.SelectedRow;
+      finally
+        GoalMenu.Free;
+      end;
 
-      if AutoScroll and Dirty then PinToBottom;
-
-      if not Proc.Running then
+      if Goal = '(custom)' then
       begin
-        DrainOutput;
-        if Partial <> '' then begin Lines.Add(Partial); Partial := ''; end;
-        ExitCode   := Proc.ExitCode;
-        Running    := False;
-        PinToBottom;
-        Dirty := True;
-        Draw;
+        Goal := '';
+        if EditLine('Goal', '', Goal, GoalSelRow) and (Goal <> '') then
+          Break;
+        { ESC or empty in EditLine: loop back to goal picker }
+      end
+      else
         Break;
-      end;
-
-      if Term.ReadKeyTimeout(K, 50) then
-        case K.Code of
-          kcUp:       HandleScroll(-1);
-          kcDown:     HandleScroll(1);
-          kcPageUp:   HandleScroll(-VisibleRows);
-          kcPageDown: HandleScroll(VisibleRows);
-          kcCtrlC:
-            if Running then
-            begin
-              Proc.Terminate(1);
-              AutoScroll := False;
-              Dirty := True;
-            end;
-        end;
-
-      if Dirty then Draw;
     until False;
+    if Goal = '' then Exit;
 
-    { Post-run: scroll or close }
-    repeat
-      if Term.ReadKeyTimeout(K, 200) then
-      begin
-        case K.Code of
-          kcUp:        HandleScroll(-1);
-          kcDown:      HandleScroll(1);
-          kcPageUp:    HandleScroll(-VisibleRows);
-          kcPageDown:  HandleScroll(VisibleRows);
-          kcEnter, kcEscape: Break;
+    Lines     := TStringList.Create;
+    Proc      := TProcess.Create(nil);
+    try
+      Proc.Executable      := 'pasbuild';
+      Proc.Parameters.Add(Goal);
+      Proc.CurrentDirectory := ExtractFilePath(ExpandFileName(FProject.FileName));
+      Proc.Options          := [poUsePipes, poStderrToOutput];
+
+      StartTime  := Now;
+      ScrollOff  := 0;
+      AutoScroll := True;
+      Partial    := '';
+      ExitCode   := 0;
+      Running    := True;
+      Dirty      := True;
+
+      Proc.Execute;
+
+      { Main poll loop }
+      repeat
+        DrainOutput;
+
+        if AutoScroll and Dirty then PinToBottom;
+
+        if not Proc.Running then
+        begin
+          DrainOutput;
+          if Partial <> '' then begin Lines.Add(Partial); Partial := ''; end;
+          ExitCode   := Proc.ExitCode;
+          Running    := False;
+          PinToBottom;
+          Dirty := True;
+          Draw;
+          Break;
         end;
+
+        if Term.ReadKeyTimeout(K, 50) then
+          case K.Code of
+            kcUp:       HandleScroll(-1);
+            kcDown:     HandleScroll(1);
+            kcPageUp:   HandleScroll(-VisibleRows);
+            kcPageDown: HandleScroll(VisibleRows);
+            kcCtrlC:
+              if Running then
+              begin
+                Proc.Terminate(1);
+                AutoScroll := False;
+                Dirty := True;
+              end;
+          end;
+
         if Dirty then Draw;
-      end;
-    until False;
+      until False;
 
-  finally
-    if Proc.Running then Proc.Terminate(1);
-    Proc.Free;
-    Lines.Free;
-  end;
+      { Post-run: scroll, then Enter/Esc returns to goal picker }
+      repeat
+        if Term.ReadKeyTimeout(K, 200) then
+        begin
+          case K.Code of
+            kcUp:        HandleScroll(-1);
+            kcDown:      HandleScroll(1);
+            kcPageUp:    HandleScroll(-VisibleRows);
+            kcPageDown:  HandleScroll(VisibleRows);
+            kcEnter, kcEscape: Break;
+          end;
+          if Dirty then Draw;
+        end;
+      until False;
+
+    finally
+      if Proc.Running then Proc.Terminate(1);
+      Proc.Free;
+      Lines.Free;
+    end;
+  until False;
 end;
 
 procedure TUIController.RunProjectMenu;
