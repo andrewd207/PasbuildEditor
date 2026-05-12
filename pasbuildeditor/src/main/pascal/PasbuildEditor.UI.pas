@@ -732,7 +732,7 @@ begin
     end;
   end;
   if Assigned(FParent) and FParent.FModified then
-    if Confirm('Parent project also has unsaved changes. Save parent now?') then
+    if Confirm('Parent project also has unsaved changes. Save parent now?', True) then
       FParent.SaveProject;
 end;
 

@@ -7,7 +7,7 @@
   <build>
     <packaging>application</packaging>
     <mainSource>Main.pas</mainSource>
-    <executableName>pasbuildeditor</executableName>
+    <executableName>pb-editor</executableName>
     <manualUnitPaths>true</manualUnitPaths>
     <unitPaths>
       <path>src/main/pascal</path>

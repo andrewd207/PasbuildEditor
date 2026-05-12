@@ -38,13 +38,13 @@ You need Free Pascal 3.x and PasBuild installed.
 pasbuild compile
 ----
 
-The binary is written to `pasbuildeditor/target/pasbuildeditor`.
+The binary is written to `pasbuildeditor/target/pb-editor`.
 
 == Usage
 
 [source,shell]
 ----
-pasbuildeditor [project.xml]
+pb-editor [project.xml]
 ----
 
 If no path is given the editor looks for `project.xml` in the current directory. Navigation is entirely keyboard-driven: arrow keys move between items, Enter opens a sub-menu, Escape or the left arrow goes back, and hotkeys (shown highlighted) jump directly to items.
