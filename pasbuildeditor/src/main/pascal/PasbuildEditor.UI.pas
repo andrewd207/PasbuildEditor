@@ -626,7 +626,9 @@ type
     procedure RunBuildRunner;
     procedure RunProjectMenu;
     procedure RunCommonMenu(P: TProjectCommon);
-    function RunPasbuildInitInteractive(const AWorkDir: string): Boolean;
+    function RunPasbuildInitInteractive(const AWorkDir: string;
+      const AParentLicense: string = '';
+      const AParentAuthor: string = ''): Boolean;
     procedure RunCreateModuleWizard(P: TProjectPOM);
     procedure RunPOMMenu(P: TProjectPOM);
     procedure RunProfileEditMenu(P: TProjectBase; AProfile: TProfile);
@@ -635,6 +637,8 @@ type
     procedure RunDepsMenu(P: TProjectCommon);
     procedure RunModuleDepsMenu(P: TProjectCommon);
     procedure RunStringListMenu(const ATitle: string; AList: TStringList);
+    procedure RunBootstrapExcludeMenu(P: TProjectCommon);
+    procedure RunSourcePackageMenu(P: TProjectCommon);
     procedure RunUnitPathsMenu(P: TProjectCommon; const ATitle: string;
       AList: TConditionalPathList; AKind: string);
     procedure SaveProject;
@@ -1673,6 +1677,201 @@ begin
   until GQuitRequested or GCtrlCRequested or GCtrlXRequested;
 end;
 
+procedure TUIController.RunBootstrapExcludeMenu(P: TProjectCommon);
+var
+  Menu:       TMenu;
+  Sel:        TMenuItem;
+  It:         TMenuItem;
+  SR:         TSearchRec;
+  SrcDir:     string;
+  LastLabel:  string;
+  I:          Integer;
+  Seen:       TStringList;
+
+  { Scan ADir recursively for .pas files and add each to Menu }
+  procedure ScanDir(const ADir: string);
+  var
+    InnerSR:  TSearchRec;
+    UnitName: string;
+    Line:     string;
+    F:        TextFile;
+    Excluded: Boolean;
+  begin
+    if FindFirst(IncludeTrailingPathDelimiter(ADir) + '*.pas', faAnyFile, InnerSR) = 0 then
+    try
+      repeat
+        if (InnerSR.Attr and faDirectory) <> 0 then Continue;
+        { Extract unit name from first non-blank line containing 'unit ' }
+        UnitName := '';
+        AssignFile(F, IncludeTrailingPathDelimiter(ADir) + InnerSR.Name);
+        try
+          Reset(F);
+          while not EOF(F) and (UnitName = '') do
+          begin
+            ReadLn(F, Line);
+            Line := Trim(Line);
+            if SameText(Copy(Line, 1, 5), 'unit ') then
+            begin
+              UnitName := Trim(Copy(Line, 6, MaxInt));
+              { strip trailing semicolon }
+              if (UnitName <> '') and (UnitName[Length(UnitName)] = ';') then
+                Delete(UnitName, Length(UnitName), 1);
+              UnitName := Trim(UnitName);
+            end;
+          end;
+        except
+        end;
+        CloseFile(F);
+        if UnitName = '' then Continue;
+        if Seen.IndexOf(UnitName) >= 0 then Continue;
+        Seen.Add(UnitName);
+        Excluded := P.BootstrapExclude.IndexOf(UnitName) >= 0;
+        It := TMenuItem.Create(UnitName, nil,
+          IfThen(Excluded, '[x] excluded', '[ ] included'));
+        It.DimValue := Excluded;
+        Menu.Add(It);
+      until FindNext(InnerSR) <> 0;
+    finally
+      FindClose(InnerSR);
+    end;
+    { Recurse into subdirectories }
+    if FindFirst(IncludeTrailingPathDelimiter(ADir) + '*', faDirectory, InnerSR) = 0 then
+    try
+      repeat
+        if (InnerSR.Attr and faDirectory) = 0 then Continue;
+        if (InnerSR.Name = '.') or (InnerSR.Name = '..') then Continue;
+        ScanDir(IncludeTrailingPathDelimiter(ADir) + InnerSR.Name);
+      until FindNext(InnerSR) <> 0;
+    finally
+      FindClose(InnerSR);
+    end;
+  end;
+
+begin
+  SrcDir := ExtractFilePath(ExpandFileName(FProject.FileName));
+  if P.SourceDirectory <> '' then
+    SrcDir := IncludeTrailingPathDelimiter(SrcDir) + P.SourceDirectory
+  else
+    SrcDir := IncludeTrailingPathDelimiter(SrcDir) + 'src/main/pascal';
+
+  LastLabel := '';
+  repeat
+    Menu := TMenu.Create(FBreadcrumb + ' > Bootstrap exclude');
+    try
+      Menu.AddHeader('Bootstrap exclude — Enter to toggle');
+      Menu.AddSeparator;
+
+      Seen := TStringList.Create;
+      try
+        Seen.CaseSensitive := False;
+        if FindFirst(SrcDir, faDirectory, SR) = 0 then
+        begin
+          FindClose(SR);
+          ScanDir(SrcDir);
+        end
+        else
+          Menu.Add(TMenuItem.Create('(no source directory found)', nil));
+      finally
+        Seen.Free;
+      end;
+
+      if LastLabel <> '' then Menu.SelectByLabel(LastLabel);
+      Sel := Menu.Run;
+      if GSaveRequested then begin SaveProject; GSaveRequested := False; Continue; end;
+      if GQuitRequested or GCtrlCRequested or GCtrlXRequested or
+         ((Sel = nil) and (Menu.UnhandledChar = #0)) then Break;
+      if Sel = nil then Continue;
+      LastLabel := Sel.Label_;
+
+      { Toggle excluded/included }
+      I := P.BootstrapExclude.IndexOf(Sel.Label_);
+      if I >= 0 then
+        P.BootstrapExclude.Delete(I)
+      else
+        P.BootstrapExclude.Add(Sel.Label_);
+      SetModified;
+    finally
+      Menu.Free;
+    end;
+  until GQuitRequested or GCtrlCRequested or GCtrlXRequested;
+end;
+
+procedure TUIController.RunSourcePackageMenu(P: TProjectCommon);
+var
+  Menu:       TMenu;
+  Sel:        TMenuItem;
+  It:         TMenuItem;
+  ProjectDir: string;
+  PickedPath: string;
+  RelPath:    string;
+  LastLabel:  string;
+  I:          Integer;
+begin
+  ProjectDir := ExtractFilePath(ExpandFileName(FProject.FileName));
+  LastLabel  := '';
+  repeat
+    Menu := TMenu.Create(FBreadcrumb + ' > Source package');
+    try
+      Menu.AddHeader('Source package extra includes');
+      Menu.AddSeparator;
+
+      if P.SourcePackageIncludes.Count = 0 then
+      begin
+        It := TMenuItem.Create('src/', nil, '(default)');
+        It.DimItem := True;
+        Menu.Add(It);
+      end
+      else
+      begin
+        for I := 0 to P.SourcePackageIncludes.Count - 1 do
+          Menu.Add(TMenuItem.Create(P.SourcePackageIncludes[I], nil));
+      end;
+
+      Menu.AddSeparator;
+      Menu.Add(TMenuItem.Create('Add folder', nil, '', 'A'));
+
+      if LastLabel <> '' then Menu.SelectByLabel(LastLabel);
+      Sel := Menu.Run;
+      if GSaveRequested then begin SaveProject; GSaveRequested := False; Continue; end;
+      if GQuitRequested or GCtrlCRequested or GCtrlXRequested or
+         ((Sel = nil) and (Menu.UnhandledChar = #0)) then Break;
+      if Sel = nil then Continue;
+      LastLabel := Sel.Label_;
+
+      if Sel.Label_ = 'Add folder' then
+      begin
+        PickedPath := '';
+        if RunPathPicker(ProjectDir, FBreadcrumb + ' > Source package > Add', True, PickedPath) then
+        begin
+          { Make relative to project dir }
+          RelPath := ExtractRelativepath(ProjectDir, PickedPath);
+          if (RelPath <> '') and (P.SourcePackageIncludes.IndexOf(RelPath) < 0) then
+          begin
+            P.SourcePackageIncludes.Add(RelPath);
+            SetModified;
+            LastLabel := RelPath;
+          end;
+        end;
+      end
+      else if not Sel.DimItem then
+      begin
+        { Delete on Del key }
+        if Menu.DeletePressed then
+        begin
+          if Confirm('Remove "' + Sel.Label_ + '"?') then
+          begin
+            I := P.SourcePackageIncludes.IndexOf(Sel.Label_);
+            if I >= 0 then begin P.SourcePackageIncludes.Delete(I); SetModified; end;
+            LastLabel := '';
+          end;
+        end;
+      end;
+    finally
+      Menu.Free;
+    end;
+  until GQuitRequested or GCtrlCRequested or GCtrlXRequested;
+end;
+
 procedure TUIController.RunUnitPathsMenu(P: TProjectCommon;
   const ATitle: string; AList: TConditionalPathList; AKind: string);
 var
@@ -1841,7 +2040,8 @@ begin
       It.DimValue := (P.BootstrapExclude.Count = 0);
       It.Desc := SDescBootstrapExclude; Menu.Add(It);
       It := TMenuItem.Create('Source package', nil,
-        IfThen(P.SourcePackageIncludes.Count = 0, '(none)',
+        IfThen(P.SourcePackageIncludes.Count = 0,
+               'src/  (default)',
                JoinTruncated(P.SourcePackageIncludes, ' ', Term.Width - 26)), 'K');
       It.DimValue := (P.SourcePackageIncludes.Count = 0);
       It.Desc := SDescSourcePkgIncludes; Menu.Add(It);
@@ -1910,9 +2110,9 @@ begin
         'Include paths':
           RunUnitPathsMenu(P, 'Include Paths', P.IncludePaths, 'include');
         'Bootstrap exclude':
-          RunStringListMenu(FBreadcrumb + ' > Bootstrap exclude', P.BootstrapExclude);
+          RunBootstrapExcludeMenu(P);
         'Source package':
-          RunStringListMenu(FBreadcrumb + ' > Source package', P.SourcePackageIncludes);
+          RunSourcePackageMenu(P);
         'Dependencies':        RunDepsMenu(P);
         'Module dependencies': RunModuleDepsMenu(P);
       end;
@@ -1993,27 +2193,34 @@ begin
   AQuestion := S;
 end;
 
-function TUIController.RunPasbuildInitInteractive(const AWorkDir: string): Boolean;
+function TUIController.RunPasbuildInitInteractive(const AWorkDir: string;
+  const AParentLicense: string; const AParentAuthor: string): Boolean;
 const
   IDLE_POLL_MS  = 5;
   PROMPT_IDLE   = 20;
 var
-  Proc:     TProcess;
-  Accum:    string;
-  Buf:      array[0..511] of Byte;
-  N, Idle:  Integer;
-  LastNL:   Integer;
-  LastLine: string;
-  I:        Integer;
+  Proc:            TProcess;
+  Accum:           string;
+  Buf:             array[0..511] of Byte;
+  N, Idle:         Integer;
+  LastNL:          Integer;
+  LastLine:        string;
+  I:               Integer;
   Question, Default_: string;
-  Options:  TStringList;
-  PickMenu: TMenu;
-  PickSel:  TMenuItem;
-  Answer:   string;
+  Options:         TStringList;
+  PickMenu:        TMenu;
+  PickSel:         TMenuItem;
+  Answer:          string;
+  IsVersionQ:   Boolean;
+  IsLicenseQ:   Boolean;
+  LicenseAnswer: string;
+  ChildXML:     string;
+  ChildProj:    TProjectBase;
 begin
-  Result  := False;
-  Options := TStringList.Create;
-  Proc    := TProcess.Create(nil);
+  Result        := False;
+  LicenseAnswer := '';
+  Options       := TStringList.Create;
+  Proc           := TProcess.Create(nil);
   try
     Proc.Executable      := 'pasbuild';
     Proc.Parameters.Add('init');
@@ -2055,20 +2262,51 @@ begin
       if not ParseInitPrompt(LastLine, Question, Default_, Options) then
         Continue;
 
+      IsVersionQ := (AParentLicense <> '') and (Pos('version', LowerCase(Question)) > 0);
+      IsLicenseQ := (AParentLicense <> '') and (Pos('license', LowerCase(Question)) > 0);
+
+      if (AParentAuthor <> '') and (Pos('author', LowerCase(Question)) > 0) then
+        Default_ := AParentAuthor;
+
+      { Version in a submodule should be blank so it inherits from the POM }
+      if IsVersionQ then
+      begin
+        Answer := LineEnding;
+        Proc.Input.Write(Answer[1], Length(Answer));
+        Accum := '';
+        Continue;
+      end;
+
       if Options.Count > 0 then
       begin
         PickMenu := TMenu.Create(Question);
         try
+          if IsLicenseQ then
+            PickMenu.Add(TMenuItem.Create(
+              'Use inherited (' + AParentLicense + ')', nil, 'inherited'));
           for I := 0 to Options.Count - 1 do
             PickMenu.Add(TMenuItem.Create(Options[I], nil));
-          if Default_ <> '' then PickMenu.SelectByLabel(Default_);
+          if IsLicenseQ then
+            PickMenu.SelectByLabel('Use inherited (' + AParentLicense + ')')
+          else if Default_ <> '' then
+            PickMenu.SelectByLabel(Default_);
           PickSel := PickMenu.Run;
           if GQuitRequested or GCtrlCRequested or GCtrlXRequested or (PickSel = nil) then
           begin
             Proc.Terminate(1);
             Exit;
           end;
+          if IsLicenseQ and (PickSel.Value = 'inherited') then
+          begin
+            { Answer pasbuild with the default; record that we're inheriting }
+            LicenseAnswer := AParentLicense;
+            Answer := Default_ + LineEnding;
+            Proc.Input.Write(Answer[1], Length(Answer));
+            Accum := '';
+            Continue;
+          end;
           Answer := PickSel.Label_;
+          if IsLicenseQ then LicenseAnswer := Answer;
         finally
           PickMenu.Free;
         end;
@@ -2089,6 +2327,23 @@ begin
     until False;
 
     Proc.WaitOnExit;
+
+    { Post-process child project.xml: clear version, fix license if inherited }
+    ChildXML := IncludeTrailingPathDelimiter(AWorkDir) + 'project.xml';
+    if (AParentLicense <> '') and FileExists(ChildXML) then
+    begin
+      ChildProj := TProjectBase.LoadFromFile(ChildXML);
+      if ChildProj <> nil then
+      try
+        ChildProj.Version := '';
+        if SameText(LicenseAnswer, AParentLicense) then
+          DeleteFile(IncludeTrailingPathDelimiter(AWorkDir) + 'LICENSE');
+        ChildProj.SaveToFile;
+      finally
+        ChildProj.Free;
+      end;
+    end;
+
     Result := True;
   finally
     Options.Free;
@@ -2101,6 +2356,7 @@ var
   FolderName: string;
   FullDir:    string;
   ModPath:    string;
+  ProjectDir: string;
   I:          Integer;
 
   procedure ShowMsg(const S: string; AColor: TColor);
@@ -2117,7 +2373,24 @@ var
 begin
   if not EditLine('New module folder name', '', FolderName) or (FolderName = '') then Exit;
 
-  FullDir := IncludeTrailingPathDelimiter(ExtractFilePath(FProject.FileName)) + FolderName;
+  { Reject anything that looks like an absolute path or escapes via .. }
+  FolderName := ExcludeLeadingPathDelimiter(FolderName);
+  if (FolderName = '') or (Pos('..', FolderName) > 0) then
+  begin
+    ShowMsg('Folder name must not be empty or contain "..".', clRed);
+    Exit;
+  end;
+
+  ProjectDir := IncludeTrailingPathDelimiter(ExtractFilePath(ExpandFileName(FProject.FileName)));
+  FullDir    := ProjectDir + FolderName;
+
+  { Sanity-check: resolved path must still be under the project dir }
+  if Pos(ProjectDir, IncludeTrailingPathDelimiter(FullDir)) <> 1 then
+  begin
+    ShowMsg('Folder must be inside the project directory.', clRed);
+    Exit;
+  end;
+
   if DirectoryExists(FullDir) then
   begin
     ShowMsg('Folder already exists: ' + FullDir, clRed);
@@ -2138,7 +2411,7 @@ begin
     Exit;
   end;
 
-  if RunPasbuildInitInteractive(FullDir) then
+  if RunPasbuildInitInteractive(FullDir, P.License, P.Author) then
   begin
     P.AddModule(ModPath, True);
     SetModified;
