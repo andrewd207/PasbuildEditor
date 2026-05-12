@@ -35,7 +35,9 @@ type
     MarkOld:  Boolean;  // render value in yellow (e.g. older available versions)
     Action:  TMenuAction;
     constructor Create(const ALabel: string; AAction: TMenuAction = nil;
-      const AValue: string = ''; AHotkey: Char = #0);
+      const AValue: string = ''; AHotkey: Char = #0; AHint: String = '');
+    constructor CreateEmbeddedHotkey(const ALabel: string; AAction: TMenuAction = nil;
+      const AValue: string = ''; AHint: String = '');
     constructor CreateHeader(const ALabel: string);
     constructor CreateSeparator;
   end;
@@ -292,18 +294,46 @@ end;
   ══════════════════════════════════════════════════════════════════════ }
 
 constructor TMenuItem.Create(const ALabel: string; AAction: TMenuAction = nil;
-  const AValue: string = ''; AHotkey: Char = #0);
+  const AValue: string = ''; AHotkey: Char = #0; AHint: String = '');
 begin
   inherited Create;
   Kind    := mikNormal;
   Label_  := ALabel;
   Value   := AValue;
-  Hint    := '';
+  Hint    := AHint;
   Hotkey  := AHotkey;
   Enabled := True;
   DimItem := False;
   MarkOld := False;
   Action  := AAction;
+end;
+
+constructor TMenuItem.CreateEmbeddedHotkey(
+  const ALabel: string;
+  AAction: TMenuAction;
+  const AValue: string;
+  AHint: string
+);
+var
+  HotkeyPos: SizeInt;
+  CleanLabel: string;
+  HotkeyChar: Char;
+begin
+  HotkeyPos := Pos('&', ALabel);
+
+  if (HotkeyPos > 0) and (HotkeyPos < Length(ALabel)) then
+  begin
+    CleanLabel := ALabel;
+    Delete(CleanLabel, HotkeyPos, 1);
+    HotkeyChar := UpCase(CleanLabel[HotkeyPos]);
+  end
+  else
+  begin
+    CleanLabel := ALabel;
+    HotkeyChar := #0;
+  end;
+
+  Create(CleanLabel, AAction, AValue, HotkeyChar, AHint);
 end;
 
 constructor TMenuItem.CreateHeader(const ALabel: string);

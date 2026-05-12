@@ -32,10 +32,13 @@ resourcestring
   SDescOutputDir     = 'Directory where compiled binaries and units are written.';
   SDescSourceDir     = 'Root of the source tree; used to locate units automatically.';
   SDescExeName       = 'Name of the produced executable (without extension).';
-  SDescUnitPaths     = 'Extra directories searched for units, with optional platform conditions.';
+  SDescUnitPaths     = 'Extra paths searched for compiled units, with optional conditions.';
   SDescDefines       = 'Conditional defines passed to the compiler (e.g. DEBUG, UNICODE).';
-  SDescDependencies  = 'External package dependencies resolved from the local repository.';
-  SDescModuleDeps    = 'Sibling modules in this multi-module project that this module depends on.';
+  SDescDependencies      = 'External package dependencies resolved from the local repository.';
+  SDescModuleDeps        = 'Sibling modules in this multi-module project that this module depends on.';
+  SDescBootstrapExclude  = 'Units excluded from the auto-generated bootstrap program.';
+  SDescSourcePkgIncludes = 'Extra paths included when running pasbuild source-package.';
+  SDescIncludePaths      = 'Extra directories searched for include files (FPC -Fi flag).';
 
   { Profiles page }
   SDescProfileID      = 'Unique identifier for this profile, used with -p on the command line.';

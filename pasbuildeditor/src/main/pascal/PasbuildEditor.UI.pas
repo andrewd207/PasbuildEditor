@@ -635,7 +635,8 @@ type
     procedure RunDepsMenu(P: TProjectCommon);
     procedure RunModuleDepsMenu(P: TProjectCommon);
     procedure RunStringListMenu(const ATitle: string; AList: TStringList);
-    procedure RunUnitPathsMenu(P: TProjectCommon);
+    procedure RunUnitPathsMenu(P: TProjectCommon; const ATitle: string;
+      AList: TConditionalPathList; AKind: string);
     procedure SaveProject;
   public
     constructor Create(AProject: TProjectBase; const ABreadcrumb: string;
@@ -1611,7 +1612,8 @@ end;
 
 function RunUnitPathEditor(AProject: TProjectBase; AParentPOM: TProjectPOM;
   const ABreadcrumb, ABaseDir: string;
-  var APath, ACondition: string): Boolean;
+  var APath, ACondition: string;
+  const ATitle: string = 'Unit Path'): Boolean;
 var
   Menu:      TMenu;
   Sel, It:   TMenuItem;
@@ -1623,7 +1625,7 @@ begin
   repeat
     Menu := TMenu.Create(ABreadcrumb);
     try
-      Menu.AddHeader('Unit Path');
+      Menu.AddHeader(ATitle);
       Menu.AddSeparator;
       Menu.Add(TMenuItem.Create('Path',      nil, APath,      'P'));
       It := TMenuItem.Create('Condition', nil,
@@ -1671,7 +1673,8 @@ begin
   until GQuitRequested or GCtrlCRequested or GCtrlXRequested;
 end;
 
-procedure TUIController.RunUnitPathsMenu(P: TProjectCommon);
+procedure TUIController.RunUnitPathsMenu(P: TProjectCommon;
+  const ATitle: string; AList: TConditionalPathList; AKind: string);
 var
   Menu:      TMenu;
   Sel:       TMenuItem;
@@ -1684,19 +1687,15 @@ var
 begin
   LastLabel  := '';
   ProjectDir := ExtractFilePath(ExpandFileName(FProject.FileName));
-  if (P is TProjectCommon) and (TProjectCommon(P).SourceDirectory <> '') then
-    SrcBaseDir := ExpandFileName(IncludeTrailingPathDelimiter(ProjectDir) +
-                    TProjectCommon(P).SourceDirectory)
-  else
-    SrcBaseDir := ProjectDir;
+  SrcBaseDir := ProjectDir;
   repeat
-    Menu := TMenu.Create(FBreadcrumb + ' > Unit Paths');
+    Menu := TMenu.Create(FBreadcrumb + ' > ' + ATitle);
     try
-      Menu.AddHeader('Unit paths (' + IntToStr(P.UnitPaths.Count) + ')');
+      Menu.AddHeader(ATitle + ' (' + IntToStr(AList.Count) + ')');
       Menu.AddSeparator;
-      for I := 0 to P.UnitPaths.Count - 1 do
+      for I := 0 to AList.Count - 1 do
       begin
-        CP := P.UnitPaths[I];
+        CP := AList[I];
         if CP.Condition <> '' then
           Menu.Add(TMenuItem.Create(CP.Path, nil, '[' + CP.Condition + ']'))
         else
@@ -1716,13 +1715,13 @@ begin
       if Sel.Label_ = 'Add path' then
       begin
         Path := '';
-        if P.UnitPaths.Count > 0 then
+        if AList.Count > 0 then
         begin
-          First  := ExcludeTrailingPathDelimiter(P.UnitPaths[0].Path);
+          First  := ExcludeTrailingPathDelimiter(AList[0].Path);
           Common := ExtractFilePath(First);
-          for I := 1 to P.UnitPaths.Count - 1 do
+          for I := 1 to AList.Count - 1 do
           begin
-            Other    := ExcludeTrailingPathDelimiter(P.UnitPaths[I].Path);
+            Other    := ExcludeTrailingPathDelimiter(AList[I].Path);
             OtherDir := ExtractFilePath(Other);
             while (Common <> '') and
                   (Pos(LowerCase(ExcludeTrailingPathDelimiter(Common)),
@@ -1732,10 +1731,15 @@ begin
           Path := Common;
         end;
         Cond := '';
-        if RunUnitPathEditor(FProject, FParentPOM, FBreadcrumb + ' > Unit Paths > Add',
-             SrcBaseDir, Path, Cond) and (Path <> '') then
+        if RunUnitPathEditor(FProject, FParentPOM,
+             FBreadcrumb + ' > ' + ATitle + ' > Add',
+             SrcBaseDir, Path, Cond,
+             Copy(ATitle, 1, Length(ATitle) - 1)) and (Path <> '') then
         begin
-          P.AddUnitPath(Path, Cond);
+          if AKind = 'include' then
+            P.AddIncludePath(Path, Cond)
+          else
+            P.AddUnitPath(Path, Cond);
           SetModified;
           LastLabel := Path;
         end;
@@ -1743,17 +1747,27 @@ begin
       else
       begin
         CP := nil;
-        for I := 0 to P.UnitPaths.Count - 1 do
-          if P.UnitPaths[I].Path = Sel.Label_ then begin CP := P.UnitPaths[I]; Break; end;
+        for I := 0 to AList.Count - 1 do
+          if AList[I].Path = Sel.Label_ then begin CP := AList[I]; Break; end;
         if not Assigned(CP) then Continue;
 
         Path := CP.Path;
         Cond := CP.Condition;
         if RunUnitPathEditor(FProject, FParentPOM,
-             FBreadcrumb + ' > Unit Paths > ' + Path, SrcBaseDir, Path, Cond) then
+             FBreadcrumb + ' > ' + ATitle + ' > ' + Path,
+             SrcBaseDir, Path, Cond,
+             Copy(ATitle, 1, Length(ATitle) - 1)) then
         begin
-          P.RemoveUnitPath(CP);
-          P.AddUnitPath(Path, Cond);
+          if AKind = 'include' then
+          begin
+            P.RemoveIncludePath(CP);
+            P.AddIncludePath(Path, Cond);
+          end
+          else
+          begin
+            P.RemoveUnitPath(CP);
+            P.AddUnitPath(Path, Cond);
+          end;
           SetModified;
           LastLabel := Path;
         end
@@ -1763,7 +1777,10 @@ begin
           begin
             if Confirm('Remove path ' + CP.Path + '?') then
             begin
-              P.RemoveUnitPath(CP);
+              if AKind = 'include' then
+                P.RemoveIncludePath(CP)
+              else
+                P.RemoveUnitPath(CP);
               SetModified;
               LastLabel := '';
             end;
@@ -1815,6 +1832,19 @@ begin
                JoinTruncated(P.Defines, ' ', Term.Width - 26)), 'F');
       It.DimValue := (P.Defines.Count = 0);
       It.Desc := SDescDefines; Menu.Add(It);
+      It := TMenuItem.Create('Include paths', nil,
+        IntToStr(P.IncludePaths.Count) + ' entries', 'I');
+      It.Desc := SDescIncludePaths; Menu.Add(It);
+      It := TMenuItem.Create('Bootstrap exclude', nil,
+        IfThen(P.BootstrapExclude.Count = 0, '(none)',
+               JoinTruncated(P.BootstrapExclude, ' ', Term.Width - 26)), 'B');
+      It.DimValue := (P.BootstrapExclude.Count = 0);
+      It.Desc := SDescBootstrapExclude; Menu.Add(It);
+      It := TMenuItem.Create('Source package', nil,
+        IfThen(P.SourcePackageIncludes.Count = 0, '(none)',
+               JoinTruncated(P.SourcePackageIncludes, ' ', Term.Width - 26)), 'K');
+      It.DimValue := (P.SourcePackageIncludes.Count = 0);
+      It.Desc := SDescSourcePkgIncludes; Menu.Add(It);
       Menu.AddSeparator;
       DepNames := TStringList.Create;
       try
@@ -1873,9 +1903,16 @@ begin
         'Executable name':
           if EditLine('Executable name', P.ExecutableName, NewVal, Menu.SelectedRow) then
             begin P.ExecutableName := NewVal; SetModified; end;
-        'Unit paths':          RunUnitPathsMenu(P);
+        'Unit paths':
+          RunUnitPathsMenu(P, 'Unit Paths', P.UnitPaths, 'unit');
         'Defines':
           RunStringListMenu(FBreadcrumb + ' > Defines', P.Defines);
+        'Include paths':
+          RunUnitPathsMenu(P, 'Include Paths', P.IncludePaths, 'include');
+        'Bootstrap exclude':
+          RunStringListMenu(FBreadcrumb + ' > Bootstrap exclude', P.BootstrapExclude);
+        'Source package':
+          RunStringListMenu(FBreadcrumb + ' > Source package', P.SourcePackageIncludes);
         'Dependencies':        RunDepsMenu(P);
         'Module dependencies': RunModuleDepsMenu(P);
       end;
@@ -2780,17 +2817,17 @@ begin
       GoalMenu := TMenu.Create(FBreadcrumb + ' > Run build');
       try
         GoalMenu.AddHeader('Built-in');
-        GoalMenu.Add(TMenuItem.Create('clean',                  nil, '', 'N', 'Delete all build artifacts'));
-        GoalMenu.Add(TMenuItem.Create('process-resources',      nil, '', 'R', 'Copy resources to target directory'));
-        GoalMenu.Add(TMenuItem.Create('compile',                nil, '', 'C', 'Build the executable (runs: process-resources -> compile)'));
-        GoalMenu.Add(TMenuItem.Create('process-test-resources', nil, '', 'O', 'Copy test resources to target directory'));
-        GoalMenu.Add(TMenuItem.Create('test-compile',           nil, '', 'M', 'Compile tests (runs: compile -> process-test-resources -> test-compile)'));
-        GoalMenu.Add(TMenuItem.Create('test',                   nil, '', 'T', 'Run tests (runs: compile -> process-test-resources -> test-compile -> test)'));
-        GoalMenu.Add(TMenuItem.Create('package',                nil, '', 'P', 'Create release archive (runs: clean -> compile -> package)'));
-        GoalMenu.Add(TMenuItem.Create('source-package',         nil, '', 'S', 'Create source archive with src/, docs, and configured files'));
-        GoalMenu.Add(TMenuItem.Create('install',                nil, '', 'I', 'Install compiled units to local repository (~/.pasbuild/repository/)'));
-        GoalMenu.Add(TMenuItem.Create('dependency-tree',        nil, '', 'D', 'Show project dependency tree (no compilation)'));
-        GoalMenu.Add(TMenuItem.Create('resolve',                nil, '', 'V', 'Output resolved build configuration as JSON (no compilation)'));
+        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('clea&n',                  nil, '', 'Delete all build artifacts'));
+        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('p&rocess-resources',      nil, '', 'Copy resources to target directory'));
+        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('&compile',                nil, '', 'Build the executable (runs: process-resources -> compile)'));
+        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('pr&ocess-test-resources', nil, '', 'Copy test resources to target directory'));
+        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('test-co&mpile',           nil, '', 'Compile tests (runs: compile -> process-test-resources -> test-compile)'));
+        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('&test',                   nil, '', 'Run tests (runs: compile -> process-test-resources -> test-compile -> test)'));
+        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('&package',                nil, '', 'Create release archive (runs: clean -> compile -> package)'));
+        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('&source-package',         nil, '', 'Create source archive with src/, docs, and configured files'));
+        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('&install',                nil, '', 'Install compiled units to local repository (~/.pasbuild/repository/)'));
+        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('&dependency-tree',        nil, '', 'Show project dependency tree (no compilation)'));
+        GoalMenu.Add(TMenuItem.CreateEmbeddedHotkey('resol&ve',                nil, '', 'Output resolved build configuration as JSON (no compilation)'));
         //GoalMenu.Add(TMenuItem.Create('init',                   nil, '', 'U', 'Create new project structure')); // disable this one.
         ProjectDir  := ExtractFilePath(ExpandFileName(FProject.FileName));
         PluginsSeen := TStringList.Create;
