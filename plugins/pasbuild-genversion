@@ -1,0 +1,38 @@
+#!/bin/sh
+# pasbuild-genversion — PasBuild plugin
+#
+# Reads the version from pasbuildeditor/project.xml, writes it into
+# PasbuildEditor.Version.inc, then runs compile.
+#
+# Usage (from the project root):
+#   pasbuild genversion            # generate version + compile
+#   pasbuild genversion -p debug   # same with a profile
+
+case "$1" in
+  --pasbuild-phase)
+    echo "none"
+    exit 0
+    ;;
+esac
+
+PROJECT_DIR="${PASBUILD_PROJECT_DIR:-.}"
+SUBMODULE="$PROJECT_DIR/pasbuildeditor"
+SUBPROJECT="$SUBMODULE/project.xml"
+INC_FILE="$SUBMODULE/src/main/pascal/PasbuildEditor.Version.inc"
+
+if [ ! -f "$SUBPROJECT" ]; then
+  echo "[genversion] Error: cannot find $SUBPROJECT" >&2
+  exit 1
+fi
+
+VERSION=$(grep -m1 '<version>' "$SUBPROJECT" | sed 's/.*<version>\(.*\)<\/version>.*/\1/' | tr -d '[:space:]')
+
+if [ -z "$VERSION" ]; then
+  echo "[genversion] Error: could not read version from $SUBPROJECT" >&2
+  exit 1
+fi
+
+printf "APP_VERSION = '%s';\n" "$VERSION" > "$INC_FILE"
+echo "[genversion] Version set to $VERSION"
+
+exec pasbuild compile "$@"
