@@ -2716,10 +2716,15 @@ var
   end;
 
   procedure AddPluginsFromDir(const ADir: string; ASeen: TStringList);
+  const
+    Digits: array[0..9] of Char = ('1','2','3','4','5','6','7','8','9','0');
   var
     SR:        TSearchRec;
     PlugName:  string;
     PlugGoal:  string;
+    ItemLabel: string;
+    D:         Char;
+    Idx:       Integer;
   begin
     if not DirectoryExists(ADir) then Exit;
     if FindFirst(IncludeTrailingPathDelimiter(ADir) + 'pasbuild-*',
@@ -2730,8 +2735,19 @@ var
         PlugName := SR.Name;
         PlugGoal := Copy(PlugName, Length('pasbuild-') + 1, MaxInt);
         if (PlugGoal = '') or (ASeen.IndexOf(PlugGoal) >= 0) then Continue;
+        Idx := ASeen.Count;
         ASeen.Add(PlugGoal);
-        GoalMenu.Add(TMenuItem.Create(PlugGoal, nil, '(plugin)'));
+        if Idx <= 9 then
+        begin
+          D         := Digits[Idx];
+          ItemLabel := PadRight(PlugGoal, 18) + ' ' + D;  { 18 = COL_LABEL_W - 2 }
+        end
+        else
+        begin
+          D         := #0;
+          ItemLabel := PlugGoal;
+        end;
+        GoalMenu.Add(TMenuItem.Create(ItemLabel, nil, '(plugin)', D));
       until FindNext(SR) <> 0;
     finally
       FindClose(SR);
