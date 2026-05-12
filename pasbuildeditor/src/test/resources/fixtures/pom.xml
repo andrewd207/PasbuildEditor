@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+  <name>test-pom</name>
+  <version>2.3.4</version>
+  <author>Test Author</author>
+  <license>MIT</license>
+  <build>
+    <packaging>pom</packaging>
+  </build>
+  <modules>
+    <module>child-a</module>
+    <module activeByDefault="false">child-b</module>
+  </modules>
+  <profiles>
+    <profile>
+      <id>debug</id>
+      <defines>
+        <define>DEBUG</define>
+      </defines>
+      <compilerOptions>
+        <option>-gw</option>
+        <option>-O-</option>
+      </compilerOptions>
+    </profile>
+  </profiles>
+</project>

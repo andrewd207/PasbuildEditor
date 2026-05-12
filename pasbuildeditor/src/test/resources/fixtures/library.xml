@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+  <name>test-lib</name>
+  <version>0.1.0</version>
+  <author>Test Author</author>
+  <license>LGPL</license>
+  <build>
+    <packaging>library</packaging>
+  </build>
+</project>

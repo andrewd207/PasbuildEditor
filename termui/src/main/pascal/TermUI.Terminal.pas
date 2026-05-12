@@ -87,6 +87,8 @@ type
     function HasResized: Boolean; virtual;
 
     function ReadKey: TKeyEvent; virtual; abstract;
+    { Non-blocking variant: returns False on timeout, True + filled AKey on keypress. }
+    function ReadKeyTimeout(out AKey: TKeyEvent; TimeoutMs: Integer): Boolean; virtual; abstract;
 
     { Buffer-aware drawing — these write into the back buffer. }
     procedure WriteStr(const S: string); virtual;

@@ -623,6 +623,7 @@ type
     procedure SetModified;
     function PromptSaveOnQuit: Boolean;
     procedure ShowAboutPage;
+    procedure RunBuildRunner;
     procedure RunProjectMenu;
     procedure RunCommonMenu(P: TProjectCommon);
     function RunPasbuildInitInteractive(const AWorkDir: string): Boolean;
@@ -2519,6 +2520,339 @@ begin
   end;
 end;
 
+procedure TUIController.RunBuildRunner;
+const
+  HEADER_ROWS = 3;
+  FOOTER_ROWS = 2;
+var
+  GoalMenu:    TMenu;
+  GoalSel:     TMenuItem;
+  GoalSelRow:  Integer;
+  Goal:        string;
+  Proc:       TProcess;
+  Lines:      TStringList;
+  Partial:    string;
+  Buf:        array[0..511] of Byte;
+  N, I:       Integer;
+  ScrollOff:  Integer;
+  AutoScroll: Boolean;
+  VisibleRows: Integer;
+  Dirty:      Boolean;
+  Running:    Boolean;
+  ExitCode:   Integer;
+  StartTime:  TDateTime;
+  K:          TKeyEvent;
+  S:          string;
+
+  function ElapsedSec: Integer;
+  begin
+    Result := Trunc((Now - StartTime) * 86400);
+  end;
+
+  function DisplayLineCount: Integer;
+  begin
+    Result := Lines.Count;
+    if Partial <> '' then Inc(Result);
+  end;
+
+  function GetDisplayLine(AIdx: Integer): string;
+  begin
+    if AIdx < Lines.Count then Result := Lines[AIdx]
+    else Result := Partial;
+  end;
+
+  procedure ComputeVisible;
+  begin
+    VisibleRows := Term.Height - HEADER_ROWS - FOOTER_ROWS;
+    if VisibleRows < 1 then VisibleRows := 1;
+  end;
+
+  procedure PinToBottom;
+  begin
+    ComputeVisible;
+    ScrollOff := DisplayLineCount - VisibleRows;
+    if ScrollOff < 0 then ScrollOff := 0;
+  end;
+
+  procedure Draw;
+  var
+    Row, LineIdx, J: Integer;
+    StatusStr:       string;
+  begin
+    ComputeVisible;
+    Term.ClearScreen;
+
+    { Row 1: breadcrumb }
+    ColorHeader;
+    Term.GotoXY(1, 1);
+    Term.WriteStr(' ' + FBreadcrumb + ' > Run build');
+    Term.ClearToEOL;
+    Term.ResetColors;
+
+    { Row 2: status }
+    Term.GotoXY(1, 2);
+    if Running then
+    begin
+      Term.SetFG(clBrightYellow);
+      StatusStr := ' Running: pasbuild ' + Goal +
+                   '  (' + IntToStr(ElapsedSec) + 's)';
+    end
+    else if ExitCode = 0 then
+    begin
+      Term.SetFG(clBrightGreen);
+      StatusStr := ' Done — pasbuild ' + Goal +
+                   '  exit 0  (' + IntToStr(ElapsedSec) + 's)';
+    end
+    else
+    begin
+      Term.SetFG(clBrightRed);
+      StatusStr := ' Done — pasbuild ' + Goal +
+                   '  exit ' + IntToStr(ExitCode) +
+                   '  (' + IntToStr(ElapsedSec) + 's)';
+    end;
+    Term.WriteStr(StatusStr);
+    Term.ClearToEOL;
+    Term.ResetColors;
+
+    { Row 3: separator }
+    Term.GotoXY(1, 3);
+    ColorRule;
+    Term.WriteStr(StringOfChar('-', Term.Width));
+    Term.ResetColors;
+
+    { Output rows }
+    for J := 0 to VisibleRows - 1 do
+    begin
+      LineIdx := ScrollOff + J;
+      Row     := HEADER_ROWS + 1 + J;
+      Term.GotoXY(1, Row);
+      Term.ResetColors;
+      if LineIdx < DisplayLineCount then
+      begin
+        S := GetDisplayLine(LineIdx);
+        if Length(S) > Term.Width then S := Copy(S, 1, Term.Width);
+        if Copy(S, 1, 7) = '[INFO] ' then
+        begin
+          Term.SetFG(clBlue); Term.WriteStr('[INFO]');
+          Term.ResetColors;   Term.WriteStr(Copy(S, 7, MaxInt));
+        end
+        else if Copy(S, 1, 10) = '[WARNING] ' then
+        begin
+          Term.SetFG(clYellow); Term.WriteStr('[WARNING]');
+          Term.ResetColors;     Term.WriteStr(Copy(S, 10, MaxInt));
+        end
+        else if Copy(S, 1, 8) = '[ERROR] ' then
+        begin
+          Term.SetFG(clRed); Term.WriteStr('[ERROR]');
+          Term.ResetColors;  Term.WriteStr(Copy(S, 8, MaxInt));
+        end
+        else
+          Term.WriteStr(S);
+      end;
+      Term.ClearToEOL;
+    end;
+
+    { Footer }
+    Term.GotoXY(1, Term.Height - 1);
+    ColorHelp;
+    if Running then
+      Term.WriteStr(' [Up/Down/PgUp/PgDn] scroll   [Ctrl+C] cancel')
+    else
+      Term.WriteStr(' [Up/Down/PgUp/PgDn] scroll   [Enter/Esc] close');
+    Term.ClearToEOL;
+    Term.ResetColors;
+
+    Term.FlushOutput;
+    Dirty := False;
+  end;
+
+  procedure AppendOutput(const AData: string);
+  var
+    C:  Char;
+    J:  Integer;
+  begin
+    for J := 1 to Length(AData) do
+    begin
+      C := AData[J];
+      if C = #13 then Continue;
+      if C = #10 then
+      begin
+        Lines.Add(Partial);
+        Partial := '';
+      end
+      else
+        Partial += C;
+    end;
+  end;
+
+  procedure HandleScroll(ADelta: Integer);
+  var
+    MaxOff: Integer;
+  begin
+    AutoScroll := False;
+    ComputeVisible;
+    MaxOff := DisplayLineCount - VisibleRows;
+    if MaxOff < 0 then MaxOff := 0;
+    Inc(ScrollOff, ADelta);
+    if ScrollOff > MaxOff then ScrollOff := MaxOff;
+    if ScrollOff < 0 then ScrollOff := 0;
+    Dirty := True;
+  end;
+
+  procedure DrainOutput;
+  var J: Integer;
+  begin
+    N := Proc.Output.NumBytesAvailable;
+    while N > 0 do
+    begin
+      if N > SizeOf(Buf) then N := SizeOf(Buf);
+      N := Proc.Output.Read(Buf[0], N);
+      S := '';
+      for J := 0 to N - 1 do S += Chr(Buf[J]);
+      AppendOutput(S);
+      Dirty := True;
+      N := Proc.Output.NumBytesAvailable;
+    end;
+  end;
+
+  procedure AddPluginsFromDir(const ADir: string; ASeen: TStringList);
+  var
+    SR:        TSearchRec;
+    PlugName:  string;
+    PlugGoal:  string;
+  begin
+    if not DirectoryExists(ADir) then Exit;
+    if FindFirst(IncludeTrailingPathDelimiter(ADir) + 'pasbuild-*',
+                 faAnyFile and not faDirectory, SR) = 0 then
+    try
+      repeat
+        if (SR.Attr and faDirectory) <> 0 then Continue;
+        PlugName := SR.Name;
+        PlugGoal := Copy(PlugName, Length('pasbuild-') + 1, MaxInt);
+        if (PlugGoal = '') or (ASeen.IndexOf(PlugGoal) >= 0) then Continue;
+        ASeen.Add(PlugGoal);
+        GoalMenu.Add(TMenuItem.Create(PlugGoal, nil, '(plugin)'));
+      until FindNext(SR) <> 0;
+    finally
+      FindClose(SR);
+    end;
+  end;
+
+var
+  ProjectDir:  string;
+  PluginsSeen: TStringList;
+begin
+  { Goal selection }
+  GoalMenu := TMenu.Create('Run build — choose goal');
+  try
+    GoalMenu.AddHeader('Built-in');
+    GoalMenu.Add(TMenuItem.Create('clean',   nil, '', 'N'));
+    GoalMenu.Add(TMenuItem.Create('compile', nil, '', 'C'));
+    GoalMenu.Add(TMenuItem.Create('test',    nil, '', 'T'));
+    { Discover plugins: local plugins/ first, then ~/.pasbuild/plugins/ }
+    ProjectDir  := ExtractFilePath(ExpandFileName(FProject.FileName));
+    PluginsSeen := TStringList.Create;
+    try
+      GoalMenu.AddHeader('Plugins');
+      AddPluginsFromDir(IncludeTrailingPathDelimiter(ProjectDir) + 'plugins', PluginsSeen);
+      AddPluginsFromDir(IncludeTrailingPathDelimiter(GetUserDir) + '.pasbuild/plugins', PluginsSeen);
+    finally
+      PluginsSeen.Free;
+    end;
+    GoalMenu.AddHeader('Other');
+    GoalMenu.Add(TMenuItem.Create('(custom)', nil, '', 'M'));
+    GoalSel := GoalMenu.Run;
+    { Cancel from goal picker: clear flags so they don't propagate to RunProjectMenu }
+    GCtrlCRequested := False;
+    GCtrlXRequested := False;
+    if GQuitRequested or (GoalSel = nil) then Exit;
+    Goal        := GoalSel.Label_;
+    GoalSelRow  := GoalMenu.SelectedRow;
+  finally
+    GoalMenu.Free;
+  end;
+
+  if Goal = '(custom)' then
+  begin
+    if not EditLine('Goal', '', Goal, GoalSelRow) or (Goal = '') then Exit;
+  end;
+
+  Lines     := TStringList.Create;
+  Proc      := TProcess.Create(nil);
+  try
+    Proc.Executable      := 'pasbuild';
+    Proc.Parameters.Add(Goal);
+    Proc.CurrentDirectory := ExtractFilePath(ExpandFileName(FProject.FileName));
+    Proc.Options          := [poUsePipes, poStderrToOutput];
+
+    StartTime  := Now;
+    ScrollOff  := 0;
+    AutoScroll := True;
+    Partial    := '';
+    ExitCode   := 0;
+    Running    := True;
+    Dirty      := True;
+
+    Proc.Execute;
+
+    { Main poll loop }
+    repeat
+      DrainOutput;
+
+      if AutoScroll and Dirty then PinToBottom;
+
+      if not Proc.Running then
+      begin
+        DrainOutput;
+        if Partial <> '' then begin Lines.Add(Partial); Partial := ''; end;
+        ExitCode   := Proc.ExitCode;
+        Running    := False;
+        PinToBottom;
+        Dirty := True;
+        Draw;
+        Break;
+      end;
+
+      if Term.ReadKeyTimeout(K, 50) then
+        case K.Code of
+          kcUp:       HandleScroll(-1);
+          kcDown:     HandleScroll(1);
+          kcPageUp:   HandleScroll(-VisibleRows);
+          kcPageDown: HandleScroll(VisibleRows);
+          kcCtrlC:
+            if Running then
+            begin
+              Proc.Terminate(1);
+              AutoScroll := False;
+              Dirty := True;
+            end;
+        end;
+
+      if Dirty then Draw;
+    until False;
+
+    { Post-run: scroll or close }
+    repeat
+      if Term.ReadKeyTimeout(K, 200) then
+      begin
+        case K.Code of
+          kcUp:        HandleScroll(-1);
+          kcDown:      HandleScroll(1);
+          kcPageUp:    HandleScroll(-VisibleRows);
+          kcPageDown:  HandleScroll(VisibleRows);
+          kcEnter, kcEscape: Break;
+        end;
+        if Dirty then Draw;
+      end;
+    until False;
+
+  finally
+    if Proc.Running then Proc.Terminate(1);
+    Proc.Free;
+    Lines.Free;
+  end;
+end;
+
 procedure TUIController.RunProjectMenu;
 var
   Menu:      TMenu;
@@ -2600,9 +2934,13 @@ begin
       It.DimValue := (FProject.Profiles.Count = 0);
       It.Desc := SDescProfiles; Menu.Add(It);
 
+      It := TMenuItem.Create('Run build', nil, '', 'B');
+      It.Desc := 'Run a pasbuild goal and view output live';
+      Menu.Add(It);
+
       if FProject is TProjectCommon then
       begin
-        It := TMenuItem.Create('Build / Dependencies', nil, '', 'B');
+        It := TMenuItem.Create('Build / Dependencies', nil, '', 'D');
         It.Desc := SDescBuildDeps;
         Menu.Add(It);
       end;
@@ -2683,6 +3021,7 @@ begin
           if EditLine('Repo URL', FProject.RepoUrl, NewVal, Menu.SelectedRow) then
             begin FProject.RepoUrl := NewVal; SetModified; end;
         'Profiles':             RunProfilesMenu(FProject);
+        'Run build':            RunBuildRunner;
         'Build / Dependencies': RunCommonMenu(TProjectCommon(FProject));
         'Modules / Children':   RunPOMMenu(TProjectPOM(FProject));
       end;

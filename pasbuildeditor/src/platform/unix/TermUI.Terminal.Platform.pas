@@ -41,8 +41,10 @@ end;
 type
   TUnixTerminal = class(TTerminal)
   private
-    FOldTermios: Termios;
-    FRawMode:    Boolean;
+    FOldTermios:  Termios;
+    FRawMode:     Boolean;
+    FPeeked:      Boolean;
+    FPeekedByte:  Byte;
 
     function ReadByte(out B: Byte; TimeoutMs: Integer = -1): Boolean;
   public
@@ -58,6 +60,8 @@ type
     procedure DisableRawMode; override;
     function ReadKey: TKeyEvent; override;
 
+    function ReadKeyTimeout(out AKey: TKeyEvent; TimeoutMs: Integer): Boolean; override;
+
     procedure HideCursor; override;
     procedure ShowCursor; override;
     procedure EnterAltScreen; override;
@@ -67,7 +71,9 @@ type
 constructor TUnixTerminal.Create;
 begin
   inherited Create;
-  FRawMode := False;
+  FRawMode    := False;
+  FPeeked     := False;
+  FPeekedByte := 0;
   fpSignal(SIGWINCH, @SigWinchHandler);
   InitColor;
 end;
@@ -137,6 +143,13 @@ var
   PTV: PTimeVal;
   Res: cint;
 begin
+  if FPeeked then
+  begin
+    B := FPeekedByte;
+    FPeeked := False;
+    Result := True;
+    Exit;
+  end;
   Result := False;
   repeat
     fpFD_ZERO(FDS);
@@ -230,6 +243,16 @@ begin
       Result.Ch   := Char(B);
     end;
   end;
+end;
+
+function TUnixTerminal.ReadKeyTimeout(out AKey: TKeyEvent; TimeoutMs: Integer): Boolean;
+var B: Byte;
+begin
+  Result := ReadByte(B, TimeoutMs);
+  if not Result then Exit;
+  FPeeked     := True;
+  FPeekedByte := B;
+  AKey := ReadKey;
 end;
 
 procedure TUnixTerminal.HideCursor;
