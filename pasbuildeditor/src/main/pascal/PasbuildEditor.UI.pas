@@ -2855,6 +2855,7 @@ var
   K:          TKeyEvent;
   S:          string;
   IsJsonMode: Boolean;
+  ModuleSuffix: string;
 
   function ElapsedSec: Integer;
   begin
@@ -3039,19 +3040,19 @@ var
     if Running then
     begin
       Term.SetFG(clBrightYellow);
-      StatusStr := ' Running: pasbuild ' + Goal +
+      StatusStr := ' Running: pasbuild ' + Goal + ModuleSuffix +
                    '  (' + IntToStr(ElapsedSec) + 's)';
     end
     else if ExitCode = 0 then
     begin
       Term.SetFG(clBrightGreen);
-      StatusStr := ' Done — pasbuild ' + Goal +
+      StatusStr := ' Done — pasbuild ' + Goal + ModuleSuffix +
                    '  exit 0  (' + IntToStr(ElapsedSec) + 's)';
     end
     else
     begin
       Term.SetFG(clBrightRed);
-      StatusStr := ' Done — pasbuild ' + Goal +
+      StatusStr := ' Done — pasbuild ' + Goal + ModuleSuffix +
                    '  exit ' + IntToStr(ExitCode) +
                    '  (' + IntToStr(ElapsedSec) + 's)';
     end;
@@ -3283,10 +3284,17 @@ begin
     Lines     := TStringList.Create;
     Proc      := TProcess.Create(nil);
     try
-      Proc.Executable      := 'pasbuild';
+      Proc.Executable := 'pasbuild';
       Proc.Parameters.Add(Goal);
-      Proc.CurrentDirectory := ExtractFilePath(ExpandFileName(FProject.FileName));
-      Proc.Options          := [poUsePipes, poStderrToOutput];
+      if Assigned(FParentPOM) then
+      begin
+        Proc.CurrentDirectory := ExtractFilePath(ExpandFileName(FParentPOM.FileName));
+        Proc.Parameters.Add('-m');
+        Proc.Parameters.Add(FProject.Name);
+      end
+      else
+        Proc.CurrentDirectory := ExtractFilePath(ExpandFileName(FProject.FileName));
+      Proc.Options := [poUsePipes, poStderrToOutput];
 
       StartTime  := Now;
       ScrollOff  := 0;
@@ -3295,7 +3303,11 @@ begin
       ExitCode   := 0;
       Running    := True;
       Dirty      := True;
-      IsJsonMode := (Goal = 'resolve');
+      IsJsonMode    := (Goal = 'resolve');
+      if Assigned(FParentPOM) then
+        ModuleSuffix := ' -m ' + FProject.Name
+      else
+        ModuleSuffix := '';
 
       Proc.Execute;
 
