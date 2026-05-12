@@ -1,3 +1,12 @@
+{
+  This file is part of the PasbuildEditor project.
+  Copyright (c) 2026 Andrew Haines <andrewd207 @github>
+
+  SPDX-License-Identifier: BSD-3-Clause
+
+  Licensed under the BSD-3-Clause License. See LICENSE file for details.
+}
+
 program Main;
 
 {$mode objfpc}{$H+}
