@@ -828,11 +828,11 @@ begin
       Menu.Add(TMenuItem.Create('ID', nil, AProfile.ID, 'I'));
       It := TMenuItem.Create('Defines', nil,
         IfThen(AProfile.Defines.Count = 0, '(none)',
-               JoinTruncated(AProfile.Defines, ' ', 35)), 'D');
+               JoinTruncated(AProfile.Defines, ' ', Term.Width - 26)), 'D');
       It.DimValue := (AProfile.Defines.Count = 0); Menu.Add(It);
       It := TMenuItem.Create('Compiler options', nil,
         IfThen(AProfile.CompilerOptions.Count = 0, '(none)',
-               JoinTruncated(AProfile.CompilerOptions, ' ', 35)), 'C');
+               JoinTruncated(AProfile.CompilerOptions, ' ', Term.Width - 26)), 'C');
       It.DimValue := (AProfile.CompilerOptions.Count = 0); Menu.Add(It);
       Menu.AddSeparator;
       Menu.Add(TMenuItem.Create('Delete profile', nil, '', 'X'));
@@ -952,11 +952,11 @@ begin
         Prof := P.Profiles[I];
         ProfSummary := '';
         if Prof.Defines.Count > 0 then
-          ProfSummary := 'defines: ' + JoinTruncated(Prof.Defines, ' ', 25);
+          ProfSummary := 'defines: ' + JoinTruncated(Prof.Defines, ' ', Term.Width - 26);
         if Prof.CompilerOptions.Count > 0 then
         begin
           if ProfSummary <> '' then ProfSummary := ProfSummary + '  ';
-          ProfSummary := ProfSummary + 'options: ' + JoinTruncated(Prof.CompilerOptions, ' ', 25);
+          ProfSummary := ProfSummary + 'options: ' + JoinTruncated(Prof.CompilerOptions, ' ', Term.Width - 26);
         end;
         if ProfSummary = '' then ProfSummary := '(empty)';
         Menu.Add(TMenuItem.Create(Prof.ID, nil, ProfSummary));
@@ -1811,7 +1811,7 @@ begin
       It.Desc := SDescUnitPaths; Menu.Add(It);
       It := TMenuItem.Create('Defines', nil,
         IfThen(P.Defines.Count = 0, '(none)',
-               JoinTruncated(P.Defines, ' ', 35)), 'F');
+               JoinTruncated(P.Defines, ' ', Term.Width - 26)), 'F');
       It.DimValue := (P.Defines.Count = 0);
       It.Desc := SDescDefines; Menu.Add(It);
       Menu.AddSeparator;
@@ -1820,7 +1820,7 @@ begin
         for DI := 0 to P.Dependencies.Count - 1 do
           DepNames.Add(P.Dependencies[DI].Name);
         if DepNames.Count = 0 then DepVal := '(none)'
-        else DepVal := JoinTruncated(DepNames, ', ', 35);
+        else DepVal := JoinTruncated(DepNames, ', ', Term.Width - 26);
       finally
         DepNames.Free;
       end;
@@ -1834,7 +1834,7 @@ begin
           for DI := 0 to P.ModuleDependencies.Count - 1 do
             DepNames.Add(P.ModuleDependencies[DI]);
           if DepNames.Count = 0 then DepVal := '(none)'
-          else DepVal := JoinTruncated(DepNames, ', ', 35);
+          else DepVal := JoinTruncated(DepNames, ', ', Term.Width - 26);
         finally
           DepNames.Free;
         end;
@@ -2592,7 +2592,7 @@ begin
         if ProfNames.Count = 0 then
           ProfVal := '(none)'
         else
-          ProfVal := JoinTruncated(ProfNames, ', ', 30);
+          ProfVal := JoinTruncated(ProfNames, ', ', Term.Width - 26);
       finally
         ProfNames.Free;
       end;
@@ -2630,7 +2630,7 @@ begin
           if ModNames.Count = 0 then
             ModVal := '(none)'
           else
-            ModVal := JoinTruncated(ModNames, ', ', 30);
+            ModVal := JoinTruncated(ModNames, ', ', Term.Width - 26);
         finally
           ModNames.Free;
         end;

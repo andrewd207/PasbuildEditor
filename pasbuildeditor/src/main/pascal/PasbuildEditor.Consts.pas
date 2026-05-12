@@ -5,8 +5,8 @@ unit PasbuildEditor.Consts;
 interface
 
 const
-  APP_TITLE   = 'PasbuildEditor';
-  APP_VERSION = '1.0.0';
+  APP_TITLE = 'PasbuildEditor';
+  {$I PasbuildEditor.Version.inc}
 
   AUTHOR_NAME      = 'Andrew Haines';
   AUTHOR_COPYRIGHT = '(c) 2026, Andrew Haines';
