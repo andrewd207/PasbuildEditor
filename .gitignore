@@ -1,1 +1,39 @@
-pasbuildeditor/src/main/pascal/PasbuildEditor.Version.inc
+# Lazarus/FPC IDE files
+*.lps
+*.compiled
+fp.ini
+fp.cfg
+fp.dsk
+
+# Compiled Object files
+*.[oa]
+*.ppu
+*.rst
+
+# Executables
+*.cgi
+*.exe
+pasbuild
+
+# Build output directory (PasBuild convention)
+# All build artifacts go here (Maven convention)
+target/
+
+# Documentation generated HTML (AsciiDoc renders)
+docs/*.html
+
+# Logs and backups
+*.log
+*.bak*
+*~
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+.vscode/
+.idea/
+.ide/

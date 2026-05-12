@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <project>
   <name>pasbuildeditor-editor</name>
-  <version>1.0.0</version>
   <author>Andrew Haines &lt;andrewd207@github&gt;</author>
   <license>BSD-3-Clause</license>
   <build>
@@ -15,6 +14,9 @@
       <path condition="DARWIN">src/platform/unix</path>
       <path condition="WINDOWS">src/platform/windows</path>
     </unitPaths>
+    <resources>
+      <filtering>true</filtering>
+    </resources>
   </build>
   <test>
     <framework>auto</framework>
