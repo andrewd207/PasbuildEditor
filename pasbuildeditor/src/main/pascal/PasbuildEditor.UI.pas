@@ -2854,6 +2854,7 @@ var
   StartTime:  TDateTime;
   K:          TKeyEvent;
   S:          string;
+  IsJsonMode: Boolean;
 
   function ElapsedSec: Integer;
   begin
@@ -2883,6 +2884,139 @@ var
     ComputeVisible;
     ScrollOff := DisplayLineCount - VisibleRows;
     if ScrollOff < 0 then ScrollOff := 0;
+  end;
+
+  procedure WriteJsonLine(const ALine: string);
+  var
+    P, Len, Q: Integer;
+    C:         Char;
+    InStr:     Boolean;
+    IsKey:     Boolean;
+    Escaped:   Boolean;
+    Chunk:     string;
+    KW:        string;
+
+    procedure FlushChunk;
+    begin
+      if Chunk = '' then Exit;
+      Term.ResetColors;
+      Term.WriteStr(Chunk);
+      Chunk := '';
+    end;
+
+  begin
+    P      := 1;
+    Len    := Length(ALine);
+    InStr  := False;
+    IsKey  := False;
+    Chunk  := '';
+
+    while P <= Len do
+    begin
+      C := ALine[P];
+
+      if InStr then
+      begin
+        Chunk := Chunk + C;
+        if C = '\' then
+        begin
+          if P < Len then
+          begin
+            Inc(P);
+            Chunk := Chunk + ALine[P];
+          end;
+        end
+        else if C = '"' then
+        begin
+          InStr := False;
+          if IsKey then
+            Term.SetFG(clBrightCyan)
+          else
+            Term.SetFG(clBrightGreen);
+          Term.WriteStr(Chunk);
+          Term.ResetColors;
+          Chunk := '';
+          IsKey := False;
+        end;
+        Inc(P);
+        Continue;
+      end;
+
+      case C of
+        '"':
+        begin
+          { Look ahead past the string to check if ':' follows — marks a key }
+          Q       := P + 1;
+          Escaped := False;
+          IsKey   := False;
+          while Q <= Len do
+          begin
+            if Escaped then
+              Escaped := False
+            else if ALine[Q] = '\' then
+              Escaped := True
+            else if ALine[Q] = '"' then
+            begin
+              Inc(Q);
+              while (Q <= Len) and (ALine[Q] = ' ') do Inc(Q);
+              IsKey := (Q <= Len) and (ALine[Q] = ':');
+              Break;
+            end;
+            Inc(Q);
+          end;
+          FlushChunk;
+          InStr := True;
+          Chunk := '"';
+        end;
+        '0'..'9', '-':
+        begin
+          FlushChunk;
+          KW := '';
+          while (P <= Len) and (ALine[P] in ['0'..'9', '-', '.', 'e', 'E', '+']) do
+          begin
+            KW := KW + ALine[P];
+            Inc(P);
+          end;
+          Term.SetFG(clBrightYellow);
+          Term.WriteStr(KW);
+          Term.ResetColors;
+          Continue;
+        end;
+        't', 'f', 'n':
+        begin
+          KW := '';
+          Q  := P;
+          while (Q <= Len) and (ALine[Q] in ['a'..'z']) do
+          begin
+            KW := KW + ALine[Q];
+            Inc(Q);
+          end;
+          if (KW = 'true') or (KW = 'false') or (KW = 'null') then
+          begin
+            FlushChunk;
+            if KW = 'null' then Term.SetFG(clBrightBlack)
+            else                 Term.SetFG(clBrightMagenta);
+            Term.WriteStr(KW);
+            Term.ResetColors;
+            P := Q;
+            Continue;
+          end
+          else
+            Chunk := Chunk + C;
+        end;
+        '{', '}', '[', ']', ':', ',':
+        begin
+          FlushChunk;
+          Term.SetFG(clWhite);
+          Term.WriteStr(C);
+          Term.ResetColors;
+        end;
+      else
+        Chunk := Chunk + C;
+      end;
+      Inc(P);
+    end;
+    FlushChunk;
   end;
 
   procedure Draw;
@@ -2942,7 +3076,11 @@ var
       begin
         S := GetDisplayLine(LineIdx);
         if Length(S) > Term.Width then S := Copy(S, 1, Term.Width);
-        if Copy(S, 1, 7) = '[INFO] ' then
+        if IsJsonMode then
+        begin
+          WriteJsonLine(S);
+        end
+        else if Copy(S, 1, 7) = '[INFO] ' then
         begin
           Term.SetFG(clBlue);   Term.WriteStr('[INFO]');
           Term.ResetColors;     Term.WriteStr(Copy(S, 7, MaxInt));
@@ -3157,6 +3295,7 @@ begin
       ExitCode   := 0;
       Running    := True;
       Dirty      := True;
+      IsJsonMode := (Goal = 'resolve');
 
       Proc.Execute;
 
