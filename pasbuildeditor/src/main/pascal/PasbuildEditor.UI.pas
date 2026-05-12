@@ -2147,12 +2147,15 @@ begin
       Menu.AddSeparator;
       for I := 0 to P.Modules.Count - 1 do
       begin
-        Modl := P.Modules[I];
+        Modl     := P.Modules[I];
+        CandName := ModuleNameFromAbsDir(
+          IncludeTrailingPathDelimiter(ExtractFilePath(ExpandFileName(FProject.FileName)))
+          + Modl.Path);
         if Modl.ActiveByDefault then
-          Item := TMenuItem.Create(Modl.Path, nil)
+          Item := TMenuItem.Create(CandName, nil, Modl.Path)
         else
         begin
-          Item := TMenuItem.Create(Modl.Path + ' (disabled)', nil);
+          Item := TMenuItem.Create(CandName + ' (disabled)', nil, Modl.Path);
           Item.DimItem := True;
         end;
         Menu.Add(Item);
@@ -2174,21 +2177,23 @@ begin
       begin
         Modl := ModuleAtMenuIdx(SelIdx);
         if Assigned(Modl) then
+        begin
+          CandName := ModuleNameFromAbsDir(
+            IncludeTrailingPathDelimiter(ExtractFilePath(ExpandFileName(FProject.FileName)))
+            + Modl.Path);
           case UpCase(UChar) of
             'E': begin
               Modl.ActiveByDefault := True;
               SetModified;
-              if Modl.ActiveByDefault then
-                LastLabel := Modl.Path
-              else
-                LastLabel := Modl.Path + ' (disabled)';
+              LastLabel := CandName;
             end;
             'D': begin
               Modl.ActiveByDefault := False;
               SetModified;
-              LastLabel := Modl.Path + ' (disabled)';
+              LastLabel := CandName + ' (disabled)';
             end;
           end;
+        end;
         Continue;
       end;
 
@@ -2515,6 +2520,8 @@ var
   ProfVal:   string;
   ModNames:  TStringList;
   ModVal:    string;
+  ModXML:    string;
+  ModChild:  TProjectBase;
   I:         Integer;
 begin
   repeat
@@ -2595,7 +2602,22 @@ begin
         ModNames := TStringList.Create;
         try
           for I := 0 to TProjectPOM(FProject).Modules.Count - 1 do
-            ModNames.Add(TProjectPOM(FProject).Modules[I].Path);
+          begin
+            ModXML := IncludeTrailingPathDelimiter(ExtractFilePath(ExpandFileName(FProject.FileName)))
+              + IncludeTrailingPathDelimiter(TProjectPOM(FProject).Modules[I].Path)
+              + 'project.xml';
+            if FileExists(ModXML) then
+            begin
+              ModChild := TProjectBase.LoadFromFile(ModXML);
+              try
+                ModNames.Add(ModChild.Name);
+              finally
+                ModChild.Free;
+              end;
+            end
+            else
+              ModNames.Add(TProjectPOM(FProject).Modules[I].Path);
+          end;
           if ModNames.Count = 0 then
             ModVal := '(none)'
           else

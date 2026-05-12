@@ -6,6 +6,6 @@
   <license>BSD-3-Clause</license>
   <build>
     <packaging>library</packaging>
-    <sourceDirectory>src/main/pascal</sourceDirectory>
   </build>
+  <description>A text based screen drawing library with some routines to make a menu interface</description>
 </project>

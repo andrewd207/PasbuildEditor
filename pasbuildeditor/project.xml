@@ -1,14 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <project>
-  <name>pasbuildeditor</name>
+  <name>editor</name>
   <version>1.0.0</version>
   <author>Andrew Haines &lt;andrewd207@github&gt;</author>
   <license>BSD-3-Clause</license>
   <build>
     <packaging>application</packaging>
     <mainSource>Main.pas</mainSource>
-    <outputDirectory>target</outputDirectory>
-    <sourceDirectory>src/main/pascal</sourceDirectory>
     <executableName>pasbuildeditor</executableName>
     <manualUnitPaths>true</manualUnitPaths>
     <unitPaths>
