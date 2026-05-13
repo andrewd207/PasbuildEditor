@@ -130,8 +130,15 @@ begin
 end;
 
 procedure TUnixTerminal.DisableRawMode;
+var
+  Dummy: Byte;
 begin
   if not FRawMode then Exit;
+  { Drain any pending stdin bytes (e.g. trailing ESC sequence bytes that
+    arrived after the 50 ms read timeout, or terminal responses to the
+    ExitAltScreen/ShowCursor sequences) so they don't leak to the shell. }
+  FPeeked := False;
+  while ReadByte(Dummy, 0) do ;
   tcsetattr(StdInputHandle, TCSAFLUSH, FOldTermios);
   FRawMode := False;
 end;
