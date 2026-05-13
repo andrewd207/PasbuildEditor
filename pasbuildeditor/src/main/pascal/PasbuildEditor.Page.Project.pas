@@ -30,7 +30,8 @@ procedure RunProjectUI(Ctx: TUIContext);
 implementation
 
 uses
-  TermUI.Terminal, TermUI.Menu, TermUI.PathPicker,
+  TermUI.Terminal, TermUI.Menu, TermUI.PathPicker, TermUI.FilteredPicker,
+  PasbuildEditor.SPDX,
   PasbuildEditor.Strings,
   PasbuildEditor.UI.Utils,
   PasbuildEditor.Page.Common,
@@ -386,8 +387,12 @@ var
   ModNames:  TStringList;
   ModVal:    string;
   ModXML:    string;
-  ModChild:  TProjectBase;
-  I:         Integer;
+  LicItems:     TFilteredPickerItemList;
+  ModChild:     TProjectBase;
+  I:            Integer;
+  MismatchFile: string;
+  ProjectDir:   string;
+  RootCtx:      TUIContext;
 begin
   repeat
     Menu := TMenu.Create(Ctx.Breadcrumb);
@@ -414,7 +419,27 @@ begin
 
       It := TMenuItem.CreateEmbeddedHotkey(SLabelLicense, nil);
       if Ctx.Project.License <> '' then
-        It.Value := Ctx.Project.License
+      begin
+        It.Value   := Ctx.Project.License;
+        ProjectDir := ExtractFilePath(ExpandFileName(Ctx.Project.FileName));
+        MismatchFile := LicenseMismatchFile(ProjectDir, Ctx.Project.License);
+        if (MismatchFile = '') and not Ctx.IsRoot then
+        begin
+          { also check the repo root (walk up to root context) }
+          RootCtx := Ctx;
+          while (RootCtx.Parent <> nil) and not RootCtx.IsRoot do
+            RootCtx := RootCtx.Parent;
+          if RootCtx <> Ctx then
+            MismatchFile := LicenseMismatchFile(
+              ExtractFilePath(ExpandFileName(RootCtx.Project.FileName)),
+              Ctx.Project.License);
+        end;
+        if MismatchFile <> '' then
+        begin
+          It.Value   := Ctx.Project.License + ' (possible mismatch from ' + MismatchFile + ')';
+          It.MarkOld := True;
+        end;
+      end
       else if Assigned(Ctx.ParentPOM) and (Ctx.ParentPOM.License <> '') then
         begin It.Value := Ctx.ParentPOM.License + ' (inherited)'; It.DimValue := True; end;
       It.Desc := SDescLicense; Menu.Add(It);
@@ -536,8 +561,16 @@ begin
           if EditLine('Author', Ctx.Project.Author, NewVal, Menu.SelectedRow) then
             begin Ctx.Project.Author := NewVal; Ctx.SetModified; end;
         'License':
-          if EditLine('License', Ctx.Project.License, NewVal, Menu.SelectedRow) then
-            begin Ctx.Project.License := NewVal; Ctx.SetModified; end;
+          begin
+            LicItems := TFilteredPickerItemList.Create(True);
+            try
+              PopulateSPDXList(LicItems);
+              if RunFilteredPicker('License (SPDX)', LicItems, NewVal, Ctx.Project.License) then
+                begin Ctx.Project.License := NewVal; Ctx.SetModified; end;
+            finally
+              LicItems.Free;
+            end;
+          end;
         'Description':
           if EditLine('Description', Ctx.Project.Description, NewVal, Menu.SelectedRow) then
             begin Ctx.Project.Description := NewVal; Ctx.SetModified; end;
