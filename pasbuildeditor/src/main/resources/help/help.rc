@@ -1,3 +1,4 @@
-HELP_PROJECT RCDATA "project.adoc"
-HELP_BUILD   RCDATA "build.adoc"
-HELP_MODULES RCDATA "modules.adoc"
+HELP_PROJECT   RCDATA "project.adoc"
+HELP_BUILD     RCDATA "build.adoc"
+HELP_MODULES   RCDATA "modules.adoc"
+HELP_RUN_BUILD RCDATA "run-build.adoc"

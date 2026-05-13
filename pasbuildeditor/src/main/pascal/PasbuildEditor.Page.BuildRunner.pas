@@ -442,9 +442,9 @@ begin
         GoalSel := GoalMenu.Run;
         GCtrlCRequested := False;
         GCtrlXRequested := False;
-        if CheckGlobalKeys(GoalMenu, Ctx, GoalSel, 'build') = gkContinue then Continue;
+        if Assigned(GoalSel) then LastGoalLabel := GoalSel.Label_;
+        if CheckGlobalKeys(GoalMenu, Ctx, GoalSel, 'run_build') = gkContinue then Continue;
         if Application.Terminated or (GoalSel = nil) then Exit;
-        LastGoalLabel := GoalSel.Label_;
         if GoalSel.Value <> '' then
           Goal := GoalSel.Value
         else

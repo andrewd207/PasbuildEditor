@@ -588,6 +588,14 @@ begin
       Application.Resume;
       RunProjectUI(Ctx);
     end;
+  end
+  else if Ctx.Modified and Assigned(Ctx.Parent) then
+  begin
+    if not Ctx.PromptSaveOnQuit then
+    begin
+      Application.Resume;
+      RunProjectUI(Ctx);
+    end;
   end;
 end;
 

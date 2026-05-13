@@ -33,7 +33,15 @@ begin
   if ADocName = '' then Exit;
   RawLines := TStringList.Create;
   try
-    ResStream := TResourceStream.Create(HInstance, 'HELP_' + UpperCase(ADocName), RT_RCDATA);
+    try
+      ResStream := TResourceStream.Create(HInstance, 'HELP_' + UpperCase(ADocName), RT_RCDATA);
+    except
+      on E: EResNotFound do
+      begin
+        RawLines.Free;
+        Exit;
+      end;
+    end;
     try
       RawLines.LoadFromStream(ResStream);
     finally

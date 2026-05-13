@@ -1,0 +1,70 @@
+= Run Build Page Help
+
+Select a build goal to run pasbuild against the current project. Output is
+streamed live. Use the scroll keys to review results, then press Enter or Esc
+to return to the goal list.
+
+== clean
+
+Delete all build artifacts in the `target/` directory. Does not touch source
+files. Run this before a fresh build to ensure no stale compiled units remain.
+
+== process-resources
+
+Copy files from the resource directories into the `target/` directory.
+Runs automatically as a prerequisite of `compile`.
+
+== compile
+
+Compile the project. Runs `process-resources` first, then invokes the FPC
+compiler to produce the executable or library. This is the most common goal
+for day-to-day development.
+
+== process-test-resources
+
+Copy test resource files into the target directory. Runs automatically as a
+prerequisite of `test-compile`.
+
+== test-compile
+
+Compile the test program. Runs: `compile` → `process-test-resources` →
+`test-compile`. Requires a test source file to be configured on the Build page.
+
+== test
+
+Compile and run the test suite. Runs: `compile` → `process-test-resources` →
+`test-compile` → `test`. Exit code reflects test pass/fail.
+
+== package
+
+Create a release archive. Runs: `clean` → `compile` → `package`. Produces a
+distributable archive (`.zip` or `.tar.gz`) in `target/`.
+
+== source-package
+
+Create a source archive containing `src/`, documentation, and any extra
+directories configured on the Build page. Useful for distributing source
+releases.
+
+== install
+
+Install compiled units and the binary into the local pasbuild repository at
+`~/.pasbuild/repository/`. Other projects can then declare this project as a
+dependency.
+
+== dependency-tree
+
+Print the full dependency tree of the project without compiling anything.
+Useful for verifying that dependencies resolve to the expected versions.
+
+== resolve
+
+Output the fully resolved build configuration as JSON without compiling. Use
+this to inspect which compiler flags, unit paths, and defines are active for
+the current profile and platform.
+
+== (custom)
+
+Enter any goal name manually. Use this for plugin goals not listed above or
+for goals provided by third-party pasbuild plugins installed in
+`~/.pasbuild/plugins/` or `plugins/` in the project directory.
