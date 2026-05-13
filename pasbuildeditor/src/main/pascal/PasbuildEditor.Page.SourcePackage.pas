@@ -25,7 +25,8 @@ implementation
 
 uses
   TermUI.Terminal,
-  TermUI.PathPicker;
+  TermUI.PathPicker,
+  PasbuildEditor.GlobalKeys;
 
 procedure RunSourcePackagePage(Ctx: TUIContext; P: TProjectCommon);
 var
@@ -63,9 +64,11 @@ begin
 
       if LastLabel <> '' then Menu.SelectByLabel(LastLabel);
       Sel := Menu.Run;
-      if GSaveRequested then begin Ctx.SaveProject; GSaveRequested := False; Continue; end;
-      if GQuitRequested or GCtrlCRequested or GCtrlXRequested or
-         ((Sel = nil) and (Menu.UnhandledChar = #0)) then Break;
+      case CheckGlobalKeys(Menu, Ctx, Sel) of
+        gkContinue: Continue;
+        gkBreak:    Break;
+      end;
+      if (Sel = nil) and (Menu.UnhandledChar = #0) then Break;
       if Sel = nil then Continue;
       LastLabel := Sel.Label_;
 

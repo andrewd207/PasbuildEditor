@@ -31,6 +31,7 @@ implementation
 
 uses
   TermUI.Terminal,
+  PasbuildEditor.GlobalKeys,
   PasbuildEditor.DependencyResolver,
   PasbuildEditor.Strings,
   PasbuildEditor.UI.Utils,
@@ -154,9 +155,11 @@ begin
       Menu.Add(It);
 
       Sel := Menu.Run;
-      if GSaveRequested then begin Ctx.SaveProject; GSaveRequested := False; Continue; end;
-      if GQuitRequested or GCtrlCRequested or GCtrlXRequested or
-         ((Sel = nil) and (Menu.UnhandledChar = #0)) then Break;
+      case CheckGlobalKeys(Menu, Ctx, Sel) of
+        gkContinue: Continue;
+        gkBreak:    Break;
+      end;
+      if (Sel = nil) and (Menu.UnhandledChar = #0) then Break;
 
       if Sel.Label_ = 'Add dependency' then
       begin

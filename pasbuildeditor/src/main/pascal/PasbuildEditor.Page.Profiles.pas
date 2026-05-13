@@ -28,6 +28,7 @@ implementation
 uses
   StrUtils,
   TermUI.Terminal,
+  PasbuildEditor.GlobalKeys,
   PasbuildEditor.Dialog.CompilerOptions,
   PasbuildEditor.Page.StringList;
 
@@ -61,9 +62,11 @@ begin
 
       if LastLabel <> '' then Menu.SelectByLabel(LastLabel);
       Sel := Menu.Run;
-      if GSaveRequested then begin Ctx.SaveProject; GSaveRequested := False; Continue; end;
-      if GQuitRequested or GCtrlCRequested or GCtrlXRequested or
-         ((Sel = nil) and (Menu.UnhandledChar = #0)) then Break;
+      case CheckGlobalKeys(Menu, Ctx, Sel) of
+        gkContinue: Continue;
+        gkBreak:    Break;
+      end;
+      if (Sel = nil) and (Menu.UnhandledChar = #0) then Break;
 
       LastLabel := Sel.Label_;
       case Sel.Label_ of
@@ -189,9 +192,11 @@ begin
       Menu.Add(TMenuItem.Create('Add blank profile', nil));
 
       Sel := Menu.Run;
-      if GSaveRequested then begin Ctx.SaveProject; GSaveRequested := False; Continue; end;
-      if GQuitRequested or GCtrlCRequested or GCtrlXRequested or
-         ((Sel = nil) and (Menu.UnhandledChar = #0)) then Break;
+      case CheckGlobalKeys(Menu, Ctx, Sel) of
+        gkContinue: Continue;
+        gkBreak:    Break;
+      end;
+      if (Sel = nil) and (Menu.UnhandledChar = #0) then Break;
 
       if Sel.Label_ = 'Add profile from template' then
       begin

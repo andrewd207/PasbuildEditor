@@ -667,11 +667,15 @@ begin
 
       kcF1: begin
         FF1Pressed := True;
+        if (FSel >= 0) and (FSel < FItems.Count) then
+          Result := FItems[FSel];
         Exit;
       end;
 
       kcF2: begin
         FF2Pressed := True;
+        if (FSel >= 0) and (FSel < FItems.Count) then
+          Result := FItems[FSel];
         Exit;
       end;
 

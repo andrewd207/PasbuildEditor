@@ -36,6 +36,7 @@ uses
   PasbuildEditor.Page.Common,
   PasbuildEditor.Page.Profiles,
   PasbuildEditor.Page.BuildRunner,
+  PasbuildEditor.GlobalKeys,
   PasbuildEditor.Dialog.About,
   PasbuildEditor.Dialog.PasbuildInit,
   PasbuildEditor.Page.ShowHelp;
@@ -181,10 +182,10 @@ begin
       SelIdx := Menu.Selected;
       UChar  := Menu.UnhandledChar;
 
-      if Menu.F1Pressed then begin ShowHelpPage('modules', LastLabel); Continue; end;
-      if Menu.F2Pressed then begin ShowAboutPage; Continue; end;
-      if GSaveRequested then begin Ctx.SaveProject; GSaveRequested := False; Continue; end;
-      if GQuitRequested or GCtrlCRequested or GCtrlXRequested then Break;
+      case CheckGlobalKeys(Menu, Ctx, Sel, 'modules') of
+        gkContinue: Continue;
+        gkBreak:    Break;
+      end;
 
       if (Sel = nil) and (UChar <> #0) then
       begin
@@ -503,21 +504,18 @@ begin
       if (Menu.Selected >= 0) and (Menu.Selected < Menu.Items.Count) then
         Ctx.LastMenuLabel := Menu.Items[Menu.Selected].Label_;
 
-      if Menu.F1Pressed then begin ShowHelpPage('project', Ctx.LastMenuLabel); Continue; end;
-      if Menu.F2Pressed then begin ShowAboutPage; Continue; end;
-
-      if GSaveRequested then begin Ctx.SaveProject; GSaveRequested := False; Continue; end;
+      case CheckGlobalKeys(Menu, Ctx, Sel, 'project') of
+        gkContinue: Continue;
+        gkBreak:    Break;
+      end;
 
       if (Sel = nil) and (Menu.UnhandledChar <> #0) then Continue;
-      if (Sel = nil) and (not GQuitRequested) and (not GCtrlCRequested) and
-         (not GCtrlXRequested) then
+      if (Sel = nil) then
       begin
         if Menu.ExitedLeft and Ctx.IsRoot then Continue;
         if Ctx.IsRoot then GQuitRequested := True;
         Break;
       end;
-
-      if GCtrlCRequested or GQuitRequested or GCtrlXRequested then Break;
 
       case Sel.Label_ of
         'Name':

@@ -25,6 +25,9 @@ procedure RunStringListPage(Ctx: TUIContext; const ATitle: string;
 
 implementation
 
+uses
+  PasbuildEditor.GlobalKeys;
+
 procedure RunStringListPage(Ctx: TUIContext; const ATitle: string;
   AList: TStringList);
 var
@@ -44,9 +47,11 @@ begin
       SMenu.Add(TMenuItem.Create('Add entry', nil, '', 'A'));
 
       SSel := SMenu.Run;
-      if GSaveRequested then begin Ctx.SaveProject; GSaveRequested := False; Continue; end;
-      if GQuitRequested or GCtrlCRequested or GCtrlXRequested or
-         ((SSel = nil) and (SMenu.UnhandledChar = #0)) then Break;
+      case CheckGlobalKeys(SMenu, Ctx, SSel) of
+        gkContinue: Continue;
+        gkBreak:    Break;
+      end;
+      if (SSel = nil) and (SMenu.UnhandledChar = #0) then Break;
 
       if SSel.Label_ = 'Add entry' then
       begin

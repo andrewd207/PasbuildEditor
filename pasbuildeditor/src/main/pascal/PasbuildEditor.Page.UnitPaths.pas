@@ -28,6 +28,7 @@ implementation
 
 uses
   TermUI.Terminal,
+  PasbuildEditor.GlobalKeys,
   PasbuildEditor.Strings,
   PasbuildEditor.Dialog.UnitPathEditor;
 
@@ -78,9 +79,16 @@ begin
 
       if LastLabel <> '' then Menu.SelectByLabel(LastLabel);
       Sel := Menu.Run;
-      if GSaveRequested then begin Ctx.SaveProject; GSaveRequested := False; Continue; end;
-      if GQuitRequested or GCtrlCRequested or GCtrlXRequested or
-         ((Sel = nil) and (Menu.UnhandledChar = #0)) then
+      case CheckGlobalKeys(Menu, Ctx, Sel) of
+        gkContinue: Continue;
+        gkBreak:
+        begin
+          if P.ManualUnitPaths and (AList.Count = 0) then
+            ShowStatusMsg('Warning: manual paths enabled but no paths added — at least one path is recommended.', clYellow);
+          Break;
+        end;
+      end;
+      if (Sel = nil) and (Menu.UnhandledChar = #0) then
       begin
         if P.ManualUnitPaths and (AList.Count = 0) then
           ShowStatusMsg('Warning: manual paths enabled but no paths added — at least one path is recommended.', clYellow);

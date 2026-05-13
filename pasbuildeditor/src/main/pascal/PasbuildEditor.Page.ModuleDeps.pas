@@ -25,6 +25,7 @@ implementation
 
 uses
   TermUI.Terminal,
+  PasbuildEditor.GlobalKeys,
   PasbuildEditor.UI.Utils;
 
 procedure RunModuleDepsPage(Ctx: TUIContext; P: TProjectCommon);
@@ -65,9 +66,11 @@ begin
       Menu.Add(TMenuItem.Create('Add module dependency', nil, '', 'A'));
 
       Sel := Menu.Run;
-      if GSaveRequested then begin Ctx.SaveProject; GSaveRequested := False; Continue; end;
-      if GQuitRequested or GCtrlCRequested or GCtrlXRequested or
-         ((Sel = nil) and (Menu.UnhandledChar = #0)) then Break;
+      case CheckGlobalKeys(Menu, Ctx, Sel) of
+        gkContinue: Continue;
+        gkBreak:    Break;
+      end;
+      if (Sel = nil) and (Menu.UnhandledChar = #0) then Break;
 
       if Sel.Label_ = 'Add module dependency' then
       begin
@@ -111,8 +114,10 @@ begin
             SortedMods.Free;
           end;
           AddSel := AddMenu.Run;
-          if GSaveRequested then begin Ctx.SaveProject; GSaveRequested := False; Continue; end;
-          if GQuitRequested or GCtrlCRequested or GCtrlXRequested then Break;
+          case CheckGlobalKeys(AddMenu, Ctx, AddSel) of
+            gkContinue: Continue;
+            gkBreak:    Break;
+          end;
           if Assigned(AddSel) then
           begin
             P.ModuleDependencies.Add(AddSel.Value);
