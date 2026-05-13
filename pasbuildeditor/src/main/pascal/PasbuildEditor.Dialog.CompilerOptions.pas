@@ -26,15 +26,44 @@ procedure RunCompilerOptionsDialog(Ctx: TUIContext; const ATitle: string;
 implementation
 
 uses
-  PasbuildEditor.GlobalKeys;
+  PasbuildEditor.GlobalKeys,
+  PasbuildEditor.Compiler,
+  PasbuildEditor.Compiler.FPC,
+  PasbuildEditor.ProjectModel,
+  TermUI.FilteredPicker;
+
+function ResolveCompilerClass(Ctx: TUIContext): TCompilerClass;
+var
+  PomFile:    string;
+  ModuleName: string;
+  Key:        string;
+begin
+  if Assigned(Ctx.ParentPOM) then
+  begin
+    PomFile    := Ctx.ParentPOM.FileName;
+    ModuleName := Ctx.Project.Name;
+  end
+  else
+  begin
+    PomFile    := '';
+    ModuleName := '';
+  end;
+  Key    := DetectCompilerName(ExtractFilePath(ExpandFileName(Ctx.Project.FileName)), PomFile, ModuleName);
+  Result := TCompiler.FindCompiler(Key);
+  if Result = nil then
+    Result := TCompilerFPC;
+end;
 
 procedure RunCompilerOptionsDialog(Ctx: TUIContext; const ATitle: string;
   AList: TStringList);
 var
-  SMenu: TMenu;
-  SSel:  TMenuItem;
-  SVal:  string;
-  J:     Integer;
+  SMenu:     TMenu;
+  SSel:      TMenuItem;
+  SVal:      string;
+  J:         Integer;
+  AllOpts:   TCompilerOptionsList;
+  PickItems: TFilteredPickerItemList;
+  Opt:       TCompilerOptionItem;
 begin
   repeat
     SMenu := TMenu.Create(ATitle);
@@ -55,10 +84,21 @@ begin
 
       if SSel.Label_ = 'Add option' then
       begin
-        if EditLine('Option', '', SVal, SMenu.SelectedRow) and (SVal <> '') then
-        begin
-          AList.Add(SVal);
-          Ctx.SetModified;
+        AllOpts   := TCompilerOptionsList.Create(True);
+        PickItems := TFilteredPickerItemList.Create(True);
+        try
+          ResolveCompilerClass(Ctx).GetOptions(AllOpts);
+          for Opt in AllOpts do
+            PickItems.Add(TFilteredPickerItem.Create(Opt.Flag, Opt.Description));
+          if RunFilteredPicker(ATitle + ' › Add option', PickItems, SVal) and
+             (SVal <> '') then
+          begin
+            AList.Add(SVal);
+            Ctx.SetModified;
+          end;
+        finally
+          PickItems.Free;
+          AllOpts.Free;
         end;
       end
       else if SMenu.DeletePressed then

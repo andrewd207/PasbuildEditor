@@ -17,6 +17,8 @@ uses
   TermUI.Terminal,
   TermUI.Terminal.Platform,
   PasbuildEditor.Consts,
+  PasbuildEditor.Compiler.FPC,
+  PasbuildEditor.Compiler.Blaise,
   PasbuildEditor.UI;
 
 procedure PrintUsage;
