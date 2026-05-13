@@ -14,7 +14,8 @@ unit TermUI.FilteredPicker;
 interface
 
 uses
-  Classes, SysUtils, fgl, TermUI.Terminal, TermUI.Control, TermUI.Menu;
+  Classes, SysUtils, fgl,
+  TermUI.Terminal, TermUI.Control, TermUI.Forms, TermUI.Application, TermUI.Menu;
 
 type
   TFilteredPickerItem = class
@@ -25,13 +26,48 @@ type
 
   TFilteredPickerItemList = specialize TFPGObjectList<TFilteredPickerItem>;
 
-{ Full-screen filtered picker.
-  The filter bar at the top searches Label_ and Desc case-insensitively.
-  First Enter on a list item copies its Label_ into the filter bar and stages it.
-  Second Enter (or Enter when filter already exactly matches top result) confirms.
-  If no items match, Enter confirms with whatever is in the filter bar (free-form).
-  Esc/Left cancels. Returns True on confirm with AResult set to the label value.
-  AInitialValue pre-fills the filter bar (useful for editing an existing value). }
+  { Full-screen filtered picker form.
+    Use RunFilteredPicker for a one-shot call, or RunModal for explicit control. }
+  TFilteredPicker = class(TForm)
+  private
+    FPickerItems:  TFilteredPickerItemList;   // not owned
+    FBuf:          string;
+    FCur:          Integer;
+    FSel:          Integer;
+    FTopRow:       Integer;
+    FStaged:       Boolean;
+    FFiltered:     array of Integer;
+    FFilterCount:  Integer;
+    FResult:       string;
+    FAccepted:     Boolean;
+
+    procedure RebuildFilter;
+    function  VisibleRows: Integer;
+    procedure EnsureVisible;
+    procedure DrawFilterBar;
+    procedure DrawList;
+    procedure DrawFooter;
+    procedure PlaceCursor;
+    procedure RefreshAll;
+  protected
+    procedure DoPaint; override;
+    function  DoKeyDown(var Key: TKeyEvent): Boolean; override;
+  public
+    constructor Create(const ATitle: string = ''); override;
+
+    { Populate items (not owned by the picker). }
+    procedure SetItems(AItems: TFilteredPickerItemList;
+      const AInitialValue: string = '');
+
+    { Run as modal; returns True and sets Result on confirm. }
+    function RunModal: Boolean;
+
+    property Accepted: Boolean read FAccepted;
+    property Result_:  string  read FResult;
+  end;
+
+{ Full-screen filtered picker — one-shot helper.
+  Returns True on confirm with AResult set to the label value. }
 function RunFilteredPicker(const ATitle: string;
   AItems: TFilteredPickerItemList; out AResult: string;
   const AInitialValue: string = ''): Boolean;
@@ -51,316 +87,331 @@ begin
   Desc   := ADesc;
 end;
 
+{ ══════════════════════════════════════════════════════════════════════
+  TFilteredPicker
+  ══════════════════════════════════════════════════════════════════════ }
+
+constructor TFilteredPicker.Create(const ATitle: string);
+begin
+  inherited Create(ATitle);
+  FCur          := 1;
+  FSel          := 0;
+  FTopRow       := 0;
+  FStaged       := False;
+  FFilterCount  := 0;
+  FAccepted     := False;
+end;
+
+procedure TFilteredPicker.SetItems(AItems: TFilteredPickerItemList;
+  const AInitialValue: string);
+begin
+  FPickerItems := AItems;
+  FBuf         := AInitialValue;
+  FCur         := Length(AInitialValue) + 1;
+  FSel         := 0;
+  FTopRow      := 0;
+  FStaged      := False;
+  FAccepted    := False;
+  FResult      := '';
+  RebuildFilter;
+  Invalidate;
+end;
+
+procedure TFilteredPicker.RebuildFilter;
+var
+  Lo: string;
+  It: TFilteredPickerItem;
+  J:  Integer;
+begin
+  if FPickerItems = nil then
+  begin
+    FFilterCount := 0;
+    SetLength(FFiltered, 0);
+    Exit;
+  end;
+  Lo           := LowerCase(FBuf);
+  FFilterCount := 0;
+  SetLength(FFiltered, FPickerItems.Count);
+  for J := 0 to FPickerItems.Count - 1 do
+  begin
+    It := FPickerItems[J];
+    if (Lo = '') or
+       (Pos(Lo, LowerCase(It.Label_)) > 0) or
+       (Pos(Lo, LowerCase(It.Desc))   > 0) then
+    begin
+      FFiltered[FFilterCount] := J;
+      Inc(FFilterCount);
+    end;
+  end;
+  SetLength(FFiltered, FFilterCount);
+  if FSel >= FFilterCount then FSel := FFilterCount - 1;
+  if FSel < 0 then FSel := 0;
+  if FTopRow > FSel then FTopRow := FSel;
+end;
+
+function TFilteredPicker.VisibleRows: Integer;
+begin
+  Result := Term.Height - HEADER_ROWS - FOOTER_ROWS;
+  if Result < 1 then Result := 1;
+end;
+
+procedure TFilteredPicker.EnsureVisible;
+var VR: Integer;
+begin
+  VR := VisibleRows;
+  if FSel < FTopRow then FTopRow := FSel
+  else if FSel >= FTopRow + VR then FTopRow := FSel - VR + 1;
+end;
+
+procedure TFilteredPicker.DrawFilterBar;
+var
+  PromptStr: string;
+  FieldW, Scroll: Integer;
+  Visible_: string;
+begin
+  PromptStr := ' Search: ';
+  FieldW    := Term.Width - Length(PromptStr) - 1;
+  if FieldW < 4 then FieldW := 4;
+  Scroll := 0;
+  if FCur > FieldW then
+    Scroll := FCur - FieldW;
+  Term.GotoXY(1, 3);
+  Term.ClearToEOL;
+  Term.SetFG(clBrightYellow);
+  Term.WriteStr(PromptStr);
+  if FStaged then Term.SetFG(clBrightGreen) else Term.SetFG(clWhite);
+  Visible_ := Copy(FBuf, Scroll + 1, FieldW);
+  Term.WriteStr(Visible_);
+  Term.ClearToEOL;
+  DrawRule(4, 1, Term.Width);
+  Term.ResetColors;
+end;
+
+procedure TFilteredPicker.DrawList;
+var
+  J, Row, Idx, LabelW, DescW: Integer;
+  It: TFilteredPickerItem;
+  IsSel: Boolean;
+  LabelStr, DescStr: string;
+  VR: Integer;
+begin
+  if FPickerItems = nil then Exit;
+  VR := VisibleRows;
+  for J := 0 to VR - 1 do
+  begin
+    Row := HEADER_ROWS + 1 + J;
+    Term.GotoXY(1, Row);
+    Term.ClearToEOL;
+    Idx := FTopRow + J;
+    if Idx >= FFilterCount then Continue;
+    It    := FPickerItems[FFiltered[Idx]];
+    IsSel := (Idx = FSel);
+    if IsSel then
+    begin
+      Term.SetFG(clBlack);
+      Term.SetBG(clCyan);
+      Term.WriteStr(' > ');
+    end
+    else
+    begin
+      Term.ResetColors;
+      Term.WriteStr('   ');
+    end;
+    LabelStr := It.Label_;
+    LabelW   := COL_FLAG_W;
+    if Length(LabelStr) > LabelW then
+      LabelStr := Copy(LabelStr, 1, LabelW);
+    while Length(LabelStr) < LabelW do LabelStr := LabelStr + ' ';
+    Term.WriteStr(LabelStr);
+    DescW   := Term.Width - 3 - LabelW - 2;
+    DescStr := It.Desc;
+    if DescW > 0 then
+    begin
+      if not IsSel then Term.SetFG(clBrightBlack);
+      Term.WriteStr('  ');
+      if Length(DescStr) > DescW then
+        DescStr := Copy(DescStr, 1, DescW - 1) + '…';
+      Term.WriteStr(DescStr);
+    end;
+    Term.ResetColors;
+  end;
+end;
+
+procedure TFilteredPicker.DrawFooter;
+var
+  HintStr: string;
+begin
+  Term.GotoXY(1, Term.Height - 2);
+  Term.ClearToEOL;
+  if FStaged and (FFilterCount > 0) then
+  begin
+    Term.SetFG(clBrightBlack);
+    HintStr := ' Enter again to confirm: ' + FPickerItems[FFiltered[0]].Label_;
+    if Length(HintStr) > Term.Width - 1 then
+      HintStr := Copy(HintStr, 1, Term.Width - 2) + '…';
+    Term.WriteStr(HintStr);
+  end;
+  DrawRule(Term.Height - 1, 1, Term.Width);
+  Term.GotoXY(1, Term.Height);
+  Term.ClearToEOL;
+  Term.SetFG(clBrightBlack);
+  Term.WriteStr(HELP_FP);
+  Term.ResetColors;
+end;
+
+procedure TFilteredPicker.PlaceCursor;
+var
+  PromptStr: string;
+  FieldW, ViewCur: Integer;
+begin
+  PromptStr := ' Search: ';
+  FieldW    := Term.Width - Length(PromptStr) - 1;
+  if FieldW < 4 then FieldW := 4;
+  ViewCur := FCur;
+  if ViewCur > FieldW then ViewCur := FieldW;
+  Term.GotoXY(Length(PromptStr) + ViewCur, 3);
+end;
+
+procedure TFilteredPicker.RefreshAll;
+begin
+  DrawFilterBar;
+  DrawList;
+  DrawFooter;
+  PlaceCursor;
+  Term.FlushOutput;
+end;
+
+procedure TFilteredPicker.DoPaint;
+begin
+  Term.ClearScreen;
+  DrawHeader(Title, 1);
+  DrawFilterBar;
+  DrawList;
+  DrawFooter;
+  PlaceCursor;
+  inherited DoPaint;
+end;
+
+function TFilteredPicker.DoKeyDown(var Key: TKeyEvent): Boolean;
+begin
+  Result := True;
+  case Key.Code of
+    kcEscape:
+      Close(1);  // FAccepted stays False
+
+    kcUp:
+      if FSel > 0 then
+      begin
+        Dec(FSel);
+        EnsureVisible;
+        RefreshAll;
+      end;
+
+    kcDown:
+      if FSel < FFilterCount - 1 then
+      begin
+        Inc(FSel);
+        EnsureVisible;
+        RefreshAll;
+      end;
+
+    kcEnter:
+      begin
+        if FStaged or (FFilterCount = 0) then
+        begin
+          FResult   := FBuf;
+          FAccepted := True;
+          Term.HideCursor;
+          Close(1);
+        end
+        else
+        begin
+          FBuf    := FPickerItems[FFiltered[FSel]].Label_;
+          FCur    := Length(FBuf) + 1;
+          FStaged := True;
+          FSel    := 0;
+          FTopRow := 0;
+          RebuildFilter;
+          RefreshAll;
+        end;
+      end;
+
+    kcBackspace:
+      if FCur > 1 then
+      begin
+        Delete(FBuf, FCur - 1, 1);
+        Dec(FCur);
+        FStaged := False;
+        FSel    := 0;
+        FTopRow := 0;
+        RebuildFilter;
+        RefreshAll;
+      end;
+
+    kcDelete:
+      if FCur <= Length(FBuf) then
+      begin
+        Delete(FBuf, FCur, 1);
+        FStaged := False;
+        FSel    := 0;
+        FTopRow := 0;
+        RebuildFilter;
+        RefreshAll;
+      end;
+
+    kcHome:  begin FCur := 1;                  RefreshAll; end;
+    kcEnd:   begin FCur := Length(FBuf) + 1;   RefreshAll; end;
+    kcLeft:  begin if FCur > 1 then Dec(FCur); RefreshAll; end;
+    kcRight: begin if FCur <= Length(FBuf) then Inc(FCur); RefreshAll; end;
+
+    kcChar:
+      if Key.Ch >= ' ' then
+      begin
+        Insert(Key.Ch, FBuf, FCur);
+        Inc(FCur);
+        FStaged := False;
+        FSel    := 0;
+        FTopRow := 0;
+        RebuildFilter;
+        RefreshAll;
+      end;
+
+    else begin
+      if Assigned(GOnUnhandledKey) then
+        GOnUnhandledKey(Self, Key);
+      if GQuitRequested then Close(1);
+    end;
+  end;
+end;
+
+function TFilteredPicker.RunModal: Boolean;
+begin
+  FAccepted := False;
+  ModalResult := 0;
+  Term.ShowCursor;
+  Application.ShowModal(Self);
+  Term.HideCursor;
+  Result := FAccepted;
+end;
+
+{ ══════════════════════════════════════════════════════════════════════
+  Standalone helper
+  ══════════════════════════════════════════════════════════════════════ }
+
 function RunFilteredPicker(const ATitle: string;
   AItems: TFilteredPickerItemList; out AResult: string;
   const AInitialValue: string = ''): Boolean;
 var
-  Buf:      string;     { current filter bar text }
-  Cur:      Integer;    { cursor position in Buf (1-based) }
-  Sel:      Integer;    { selected row in filtered list (0-based) }
-  TopRow:   Integer;    { scroll offset into filtered list }
-  Staged:   Boolean;    { true after first Enter copies a label into Buf }
-  K:        TKeyEvent;
-
-  { Indices of AItems that pass the current filter }
-  Filtered: array of Integer;
-  FCount:   Integer;
-
-  procedure RebuildFilter;
-  var
-    Lo: string;
-    It: TFilteredPickerItem;
-    J:  Integer;
-  begin
-    Lo     := LowerCase(Buf);
-    FCount := 0;
-    SetLength(Filtered, AItems.Count);
-    for J := 0 to AItems.Count - 1 do
-    begin
-      It := AItems[J];
-      if (Lo = '') or
-         (Pos(Lo, LowerCase(It.Label_)) > 0) or
-         (Pos(Lo, LowerCase(It.Desc))   > 0) then
-      begin
-        Filtered[FCount] := J;
-        Inc(FCount);
-      end;
-    end;
-    SetLength(Filtered, FCount);
-    if Sel >= FCount then Sel := FCount - 1;
-    if Sel < 0 then Sel := 0;
-    if TopRow > Sel then TopRow := Sel;
-  end;
-
-  function VisibleRows: Integer;
-  begin
-    Result := Term.Height - HEADER_ROWS - FOOTER_ROWS;
-    if Result < 1 then Result := 1;
-  end;
-
-  procedure EnsureVisible;
-  var VR: Integer;
-  begin
-    VR := VisibleRows;
-    if Sel < TopRow then TopRow := Sel
-    else if Sel >= TopRow + VR then TopRow := Sel - VR + 1;
-  end;
-
-  procedure DrawFilterBar;
-  var
-    PromptStr: string;
-    FieldW, Scroll: Integer;
-    Label_: string;
-  begin
-    PromptStr := ' Search: ';
-    FieldW    := Term.Width - Length(PromptStr) - 1;
-    if FieldW < 4 then FieldW := 4;
-
-    Scroll := 0;
-    if Cur > FieldW then
-      Scroll := Cur - FieldW;
-
-    Term.GotoXY(1, 3);
-    Term.ClearToEOL;
-    Term.SetFG(clBrightYellow);
-    Term.WriteStr(PromptStr);
-    if Staged then Term.SetFG(clBrightGreen) else Term.SetFG(clWhite);
-    Label_ := Copy(Buf, Scroll + 1, FieldW);
-    Term.WriteStr(Label_);
-    Term.ClearToEOL;
-    DrawRule(4, 1, Term.Width);
-    Term.ResetColors;
-  end;
-
-  procedure DrawList;
-  var
-    J, Row, Idx, LabelW, DescW: Integer;
-    It: TFilteredPickerItem;
-    IsSel: Boolean;
-    LabelStr, DescStr: string;
-    VR: Integer;
-  begin
-    VR := VisibleRows;
-    for J := 0 to VR - 1 do
-    begin
-      Row := HEADER_ROWS + 1 + J;
-      Term.GotoXY(1, Row);
-      Term.ClearToEOL;
-      Idx := TopRow + J;
-      if Idx >= FCount then Continue;
-      It    := AItems[Filtered[Idx]];
-      IsSel := (Idx = Sel);
-
-      if IsSel then
-      begin
-        Term.SetFG(clBlack);
-        Term.SetBG(clCyan);
-        Term.WriteStr(' > ');
-      end
-      else
-      begin
-        Term.ResetColors;
-        Term.WriteStr('   ');
-      end;
-
-      { Label column }
-      LabelStr := It.Label_;
-      LabelW   := COL_FLAG_W;
-      if Length(LabelStr) > LabelW then
-        LabelStr := Copy(LabelStr, 1, LabelW);
-      while Length(LabelStr) < LabelW do LabelStr := LabelStr + ' ';
-      Term.WriteStr(LabelStr);
-
-      { Description column — fill remaining width }
-      DescW   := Term.Width - 3 - LabelW - 2;
-      DescStr := It.Desc;
-      if DescW > 0 then
-      begin
-        if not IsSel then Term.SetFG(clBrightBlack);
-        Term.WriteStr('  ');
-        if Length(DescStr) > DescW then
-          DescStr := Copy(DescStr, 1, DescW - 1) + '…';
-        Term.WriteStr(DescStr);
-      end;
-      Term.ResetColors;
-    end;
-  end;
-
-  procedure DrawFooter;
-  var
-    HintStr: string;
-  begin
-    Term.GotoXY(1, Term.Height - 2);
-    Term.ClearToEOL;
-    if Staged and (FCount > 0) then
-    begin
-      Term.SetFG(clBrightBlack);
-      HintStr := ' Enter again to confirm: ' + AItems[Filtered[0]].Label_;
-      if Length(HintStr) > Term.Width - 1 then
-        HintStr := Copy(HintStr, 1, Term.Width - 2) + '…';
-      Term.WriteStr(HintStr);
-    end;
-    DrawRule(Term.Height - 1, 1, Term.Width);
-    Term.GotoXY(1, Term.Height);
-    Term.ClearToEOL;
-    Term.SetFG(clBrightBlack);
-    Term.WriteStr(HELP_FP);
-    Term.ResetColors;
-  end;
-
-  procedure PlaceCursor;
-  var
-    PromptStr: string;
-    FieldW, Scroll, ViewCur: Integer;
-  begin
-    PromptStr := ' Search: ';
-    FieldW    := Term.Width - Length(PromptStr) - 1;
-    if FieldW < 4 then FieldW := 4;
-    Scroll  := 0;
-    ViewCur := Cur;
-    if ViewCur > FieldW then
-    begin
-      Scroll  := Cur - FieldW;
-      ViewCur := FieldW;
-    end;
-    Term.GotoXY(Length(PromptStr) + ViewCur, 3);
-  end;
-
-  procedure FullDraw;
-  begin
-    Term.ClearScreen;
-    DrawHeader(ATitle, 1);
-    DrawFilterBar;
-    DrawList;
-    DrawFooter;
-    PlaceCursor;
-    Term.FlushOutput;
-  end;
-
-  procedure RefreshAll;
-  begin
-    DrawFilterBar;
-    DrawList;
-    DrawFooter;
-    PlaceCursor;
-    Term.FlushOutput;
-  end;
-
+  Picker: TFilteredPicker;
 begin
-  Result  := False;
-  AResult := '';
-  Buf     := AInitialValue;
-  Cur     := Length(AInitialValue) + 1;
-  Sel     := 0;
-  TopRow  := 0;
-  Staged  := False;
-  FCount  := 0;
-
-  RebuildFilter;
-  Term.ShowCursor;
-  FullDraw;
-
-  repeat
-    K := Term.ReadKey;
-
-    if Term.HasResized then
-    begin
-      EnsureVisible;
-      FullDraw;
-      Continue;
-    end;
-
-    case K.Code of
-      kcEscape:
-        Exit;  { Result = False }
-
-      kcUp:
-        if Sel > 0 then
-        begin
-          Dec(Sel);
-          EnsureVisible;
-          RefreshAll;
-        end;
-
-      kcDown:
-        if Sel < FCount - 1 then
-        begin
-          Inc(Sel);
-          EnsureVisible;
-          RefreshAll;
-        end;
-
-      kcEnter:
-        begin
-          if Staged or (FCount = 0) then
-          begin
-            { Second Enter or free-form: confirm }
-            AResult := Buf;
-            Result  := True;
-            Term.HideCursor;
-            Exit;
-          end
-          else
-          begin
-            { First Enter: copy selected label into filter bar, stage it }
-            Buf    := AItems[Filtered[Sel]].Label_;
-            Cur    := Length(Buf) + 1;
-            Staged := True;
-            Sel    := 0;
-            TopRow := 0;
-            RebuildFilter;
-            RefreshAll;
-          end;
-        end;
-
-      kcBackspace:
-        if Cur > 1 then
-        begin
-          Delete(Buf, Cur - 1, 1);
-          Dec(Cur);
-          Staged := False;
-          Sel    := 0;
-          TopRow := 0;
-          RebuildFilter;
-          RefreshAll;
-        end;
-
-      kcDelete:
-        if Cur <= Length(Buf) then
-        begin
-          Delete(Buf, Cur, 1);
-          Staged := False;
-          Sel    := 0;
-          TopRow := 0;
-          RebuildFilter;
-          RefreshAll;
-        end;
-
-      kcHome: begin Cur := 1; RefreshAll; end;
-      kcEnd:  begin Cur := Length(Buf) + 1; RefreshAll; end;
-
-      kcLeft:  if Cur > 1 then begin Dec(Cur); RefreshAll; end;
-      kcRight: if Cur <= Length(Buf) then begin Inc(Cur); RefreshAll; end;
-
-      kcChar:
-        if K.Ch >= ' ' then
-        begin
-          Insert(K.Ch, Buf, Cur);
-          Inc(Cur);
-          Staged := False;
-          Sel    := 0;
-          TopRow := 0;
-          RebuildFilter;
-          RefreshAll;
-        end;
-
-      else begin
-        if Assigned(GOnUnhandledKey) then
-          GOnUnhandledKey(nil, K);
-        if GQuitRequested then Exit;
-      end;
-    end;
-  until False;
+  Picker := TFilteredPicker.Create(ATitle);
+  try
+    Picker.SetItems(AItems, AInitialValue);
+    Result  := Picker.RunModal;
+    AResult := Picker.Result_;
+  finally
+    Picker.Free;
+  end;
 end;
 
 end.

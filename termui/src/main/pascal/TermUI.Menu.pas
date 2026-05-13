@@ -14,7 +14,8 @@ unit TermUI.Menu;
 interface
 
 uses
-  Classes, SysUtils, StrUtils, fgl, TermUI.Terminal, TermUI.Control;
+  Classes, SysUtils, StrUtils, fgl,
+  TermUI.Terminal, TermUI.Control, TermUI.Forms, TermUI.Application;
 
 type
   TMenuItemKind = (mikNormal, mikHeader, mikSeparator);
@@ -41,15 +42,16 @@ type
   end;
   TMenuItemList = specialize TFPGObjectList<TMenuItem>;
 
-  { A single page of menu items with keyboard navigation }
-  TMenu = class
+  { A single page of menu items with keyboard navigation.
+    Extends TForm so it integrates with TApplication.ShowModal. }
+  TMenu = class(TForm)
   private
-    FTitle:          string;
     FItems:          TMenuItemList;
     FSel:            Integer;
     FScrollOff:      Integer;
     FHeaderRows:     Integer;
     FFooterRows:     Integer;
+    FSelectedItem:   TMenuItem;  // set by DoKeyDown before calling Close
     FExitedLeft:     Boolean;  // True when Run returned nil via Left arrow (not Esc/Q)
     FUnhandledChar:  Char;     // Set when a char key wasn't consumed; #0 otherwise
     FDeletePressed:  Boolean;  // True when Del was pressed on the current selection
@@ -62,8 +64,11 @@ type
     procedure DrawItem(I: Integer; Full: Boolean);
     procedure DrawHelp;
     procedure EnsureVisible;
+  protected
+    procedure DoPaint; override;
+    function  DoKeyDown(var Key: TKeyEvent): Boolean; override;
   public
-    constructor Create(const ATitle: string);
+    constructor Create(const ATitle: string = ''); override;
     destructor Destroy; override;
 
     procedure Add(AItem: TMenuItem);
@@ -71,15 +76,17 @@ type
     procedure AddHeader(const ALabel: string);
     procedure SelectByLabel(const ALabel: string);
 
+    { Full repaint + flush. Also called internally on scroll. }
     procedure Draw;
     procedure HandleKey(const K: TKeyEvent);
     { Returns selected item, or nil on back/quit.
-      Check ExitedLeft to distinguish Left-arrow back from Esc. }
+      Check ExitedLeft to distinguish Left-arrow back from Esc.
+      Internally calls Application.ShowModal(Self). }
     function Run: TMenuItem;
 
-    property Title:         string        read FTitle;
     property Items:         TMenuItemList read FItems;
     property Selected:      Integer       read FSel;
+    property SelectedItem:  TMenuItem     read FSelectedItem;
     property ExitedLeft:    Boolean       read FExitedLeft;
     property UnhandledChar: Char          read FUnhandledChar;
     property DeletePressed: Boolean       read FDeletePressed;
@@ -364,8 +371,7 @@ end;
 
 constructor TMenu.Create(const ATitle: string);
 begin
-  inherited Create;
-  FTitle      := ATitle;
+  inherited Create(ATitle);
   FItems      := TMenuItemList.Create(True);
   FSel        := -1;
   FScrollOff  := 0;
@@ -569,17 +575,23 @@ begin
   Term.ResetColors;
 end;
 
-procedure TMenu.Draw;
+procedure TMenu.DoPaint;
 var
   I: Integer;
 begin
   Term.HideCursor;
   Term.ClearScreen;
-  DrawHeader(FTitle, 1);
+  DrawHeader(Title, 1);
   for I := FScrollOff to FScrollOff + VisibleRows - 1 do
     if I < FItems.Count then
       DrawItem(I, True);
   DrawHelp;
+  inherited DoPaint;
+end;
+
+procedure TMenu.Draw;
+begin
+  Paint;
   Term.FlushOutput;
 end;
 
@@ -621,98 +633,92 @@ begin
   end;
 end;
 
-{ Block until the user selects an item or goes back.
-  Returns the selected TMenuItem, or nil on Esc / Left / Q (quit sets GQuitRequested). }
-function TMenu.Run: TMenuItem;
+function TMenu.DoKeyDown(var Key: TKeyEvent): Boolean;
 var
-  K:    TKeyEvent;
-  Sel:  TMenuItem;
+  Item: TMenuItem;
 begin
-  Result         := nil;
+  Result := True;
+  case Key.Code of
+    kcEnter, kcRight: begin
+      if Selectable(FSel) then
+        FSelectedItem := FItems[FSel];
+      Close(1);
+    end;
+
+    kcEscape: begin
+      FExitedLeft := False;
+      Close(1);
+    end;
+
+    kcLeft: begin
+      FExitedLeft := True;
+      Close(1);
+    end;
+
+    kcDelete: begin
+      if Selectable(FSel) then
+      begin
+        FDeletePressed := True;
+        FSelectedItem  := FItems[FSel];
+      end;
+      Close(1);
+    end;
+
+    kcF1: begin
+      FF1Pressed := True;
+      if (FSel >= 0) and (FSel < FItems.Count) then
+        FSelectedItem := FItems[FSel];
+      Close(1);
+    end;
+
+    kcF2: begin
+      FF2Pressed := True;
+      if (FSel >= 0) and (FSel < FItems.Count) then
+        FSelectedItem := FItems[FSel];
+      Close(1);
+    end;
+
+    kcChar: begin
+      for Item in FItems do
+        if Selectable(FItems.IndexOf(Item)) and
+           (Item.Hotkey <> #0) and (UpCase(Item.Hotkey) = UpCase(Key.Ch)) then
+        begin
+          FSel          := FItems.IndexOf(Item);
+          FSelectedItem := Item;
+          EnsureVisible;
+          Close(1);
+          Exit;
+        end;
+      FUnhandledChar := Key.Ch;
+      Close(1);
+    end;
+
+    kcUp, kcDown, kcPageUp, kcPageDown, kcHome, kcEnd:
+      HandleKey(Key);
+
+    else begin
+      if Assigned(GOnUnhandledKey) then
+        GOnUnhandledKey(Self, Key);
+      if GQuitRequested then Close(1);
+    end;
+  end;
+end;
+
+{ Calls Application.ShowModal so the TApplication event loop drives input.
+  Returns selected item, or nil on back/quit.
+  Check ExitedLeft to distinguish Left-arrow back from Esc. }
+function TMenu.Run: TMenuItem;
+begin
+  FSelectedItem  := nil;
   FExitedLeft    := False;
   FUnhandledChar := #0;
   FDeletePressed := False;
   FF1Pressed     := False;
   FF2Pressed     := False;
-  Draw;
-  repeat
-    K := Term.ReadKey;
-
-    if Term.HasResized then
-    begin
-      Draw;
-      Continue;
-    end;
-
-    case K.Code of
-      kcEnter, kcRight: begin
-        if Selectable(FSel) then
-        begin
-          Result := FItems[FSel];
-          Exit;
-        end;
-      end;
-
-      kcEscape: begin
-        FExitedLeft := False;
-        Exit;
-      end;
-      kcLeft: begin
-        FExitedLeft := True;
-        Exit;
-      end;
-
-      kcDelete: begin
-        if Selectable(FSel) then
-        begin
-          FDeletePressed := True;
-          Result := FItems[FSel];
-          Exit;
-        end;
-      end;
-
-      kcF1: begin
-        FF1Pressed := True;
-        if (FSel >= 0) and (FSel < FItems.Count) then
-          Result := FItems[FSel];
-        Exit;
-      end;
-
-      kcF2: begin
-        FF2Pressed := True;
-        if (FSel >= 0) and (FSel < FItems.Count) then
-          Result := FItems[FSel];
-        Exit;
-      end;
-
-      kcChar: begin
-        { Check item hotkeys first }
-        for Sel in FItems do
-          if Selectable(FItems.IndexOf(Sel)) and
-             (Sel.Hotkey <> #0) and (UpCase(Sel.Hotkey) = UpCase(K.Ch)) then
-          begin
-            FSel := FItems.IndexOf(Sel);
-            EnsureVisible;
-            Result := Sel;
-            Exit;
-          end;
-        { Pass unrecognised char back to the caller }
-        FUnhandledChar := K.Ch;
-        Exit;
-      end;
-
-      else begin
-        if K.Code in [kcUp, kcDown, kcPageUp, kcPageDown, kcHome, kcEnd] then
-          HandleKey(K)
-        else
-        begin
-          if Assigned(GOnUnhandledKey) then
-            GOnUnhandledKey(Self, K);
-          if GQuitRequested then Exit;
-        end;
-      end;
-    end;
-  until False;
+  ModalResult    := 0;
+  Invalidate;
+  Application.ShowModal(Self);
+  Result := FSelectedItem;
 end;
 
 { ══════════════════════════════════════════════════════════════════════
