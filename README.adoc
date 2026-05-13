@@ -35,7 +35,6 @@ You need Free Pascal 3.x and PasBuild installed.
 
 [source,shell]
 ----
-pasbuild genversion   # first time only — generates PasbuildEditor.Version.inc
 pasbuild compile
 ----
 

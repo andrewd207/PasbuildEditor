@@ -30,9 +30,11 @@ type
   First Enter on a list item copies its Label_ into the filter bar and stages it.
   Second Enter (or Enter when filter already exactly matches top result) confirms.
   If no items match, Enter confirms with whatever is in the filter bar (free-form).
-  Esc/Left cancels. Returns True on confirm with AResult set to the label value. }
+  Esc/Left cancels. Returns True on confirm with AResult set to the label value.
+  AInitialValue pre-fills the filter bar (useful for editing an existing value). }
 function RunFilteredPicker(const ATitle: string;
-  AItems: TFilteredPickerItemList; out AResult: string): Boolean;
+  AItems: TFilteredPickerItemList; out AResult: string;
+  const AInitialValue: string = ''): Boolean;
 
 implementation
 
@@ -50,7 +52,8 @@ begin
 end;
 
 function RunFilteredPicker(const ATitle: string;
-  AItems: TFilteredPickerItemList; out AResult: string): Boolean;
+  AItems: TFilteredPickerItemList; out AResult: string;
+  const AInitialValue: string = ''): Boolean;
 var
   Buf:      string;     { current filter bar text }
   Cur:      Integer;    { cursor position in Buf (1-based) }
@@ -246,8 +249,8 @@ var
 begin
   Result  := False;
   AResult := '';
-  Buf     := '';
-  Cur     := 1;
+  Buf     := AInitialValue;
+  Cur     := Length(AInitialValue) + 1;
   Sel     := 0;
   TopRow  := 0;
   Staged  := False;

@@ -111,12 +111,21 @@ begin
       end
       else
       begin
-        SVal := SSel.Label_;
-        if EditLine('Edit option', SVal, SVal, SMenu.SelectedRow) and
-           (SVal <> '') and (SVal <> SSel.Label_) then
-        begin
-          J := AList.IndexOf(SSel.Label_);
-          if J >= 0 then begin AList[J] := SVal; Ctx.SetModified; end;
+        AllOpts   := TCompilerOptionsList.Create(True);
+        PickItems := TFilteredPickerItemList.Create(True);
+        try
+          ResolveCompilerClass(Ctx).GetOptions(AllOpts);
+          for Opt in AllOpts do
+            PickItems.Add(TFilteredPickerItem.Create(Opt.Flag, Opt.Description));
+          if RunFilteredPicker(ATitle + ' › Edit option', PickItems, SVal, SSel.Label_) and
+             (SVal <> '') and (SVal <> SSel.Label_) then
+          begin
+            J := AList.IndexOf(SSel.Label_);
+            if J >= 0 then begin AList[J] := SVal; Ctx.SetModified; end;
+          end;
+        finally
+          PickItems.Free;
+          AllOpts.Free;
         end;
       end;
     finally
