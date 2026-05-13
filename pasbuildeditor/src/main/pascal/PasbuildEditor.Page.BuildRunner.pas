@@ -24,7 +24,7 @@ implementation
 uses
   Process,
   TermUI.Terminal, TermUI.Menu,
-  PasbuildEditor.UI.Colors,
+  PasbuildEditor.UI.Colors, PasbuildEditor.GlobalKeys,
   TermUI.Application;
 
 procedure RunBuildRunnerPage(Ctx: TUIContext);
@@ -442,6 +442,7 @@ begin
         GoalSel := GoalMenu.Run;
         GCtrlCRequested := False;
         GCtrlXRequested := False;
+        if CheckGlobalKeys(GoalMenu, Ctx, GoalSel, 'build') = gkContinue then Continue;
         if Application.Terminated or (GoalSel = nil) then Exit;
         LastGoalLabel := GoalSel.Label_;
         if GoalSel.Value <> '' then

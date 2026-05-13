@@ -137,7 +137,9 @@ var
   PkgName, PkgVer: string;
   ModuleNames:     TStringList;
   PomDir, AbsModDir, ModName: string;
+  LastLabel:       string;
 begin
+  LastLabel := '';
   repeat
     Menu := TMenu.Create(Ctx.Breadcrumb + ' > Dependencies');
     try
@@ -154,8 +156,10 @@ begin
       It := TMenuItem.Create('Add dependency', nil);
       It.Desc := SDescDependencies;
       Menu.Add(It);
+      if LastLabel <> '' then Menu.SelectByLabel(LastLabel);
 
       Sel := Menu.Run;
+      if Sel <> nil then LastLabel := Sel.Label_;
       case CheckGlobalKeys(Menu, Ctx, Sel) of
         gkContinue: Continue;
         gkBreak:    Break;

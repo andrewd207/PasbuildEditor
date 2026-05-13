@@ -94,6 +94,8 @@ begin
       Exit;
     end;
   end;
+  if (Project.Version = '') and not Assigned(ParentPOM) then
+    ShowStatusMsg('Warning: version is empty — consider setting a version for this standalone project.', clYellow);
   if Assigned(Parent) and Parent.Modified then
     if Confirm('Parent project also has unsaved changes. Save parent now?', True) then
       Parent.SaveProject;

@@ -46,11 +46,13 @@ var
   StorePath:  string;
   SelfItem:   TMenuItem;
   SortedMods: TStringList;
+  LastLabel:  string;
 begin
   ProjectDir := ExcludeTrailingPathDelimiter(
                   ExtractFilePath(ExpandFileName(Ctx.Project.FileName)));
   PomDir     := ExcludeTrailingPathDelimiter(
                   ExtractFilePath(ExpandFileName(Ctx.ParentPOM.FileName)));
+  LastLabel  := '';
   repeat
     Menu := TMenu.Create(Ctx.Breadcrumb + ' > Module Dependencies');
     try
@@ -65,8 +67,10 @@ begin
       end;
       Menu.AddSeparator;
       Menu.Add(TMenuItem.Create('Add module dependency', nil, '', 'A'));
+      if LastLabel <> '' then Menu.SelectByLabel(LastLabel);
 
       Sel := Menu.Run;
+      if Sel <> nil then LastLabel := Sel.Label_;
       case CheckGlobalKeys(Menu, Ctx, Sel) of
         gkContinue: Continue;
         gkBreak:    Break;
