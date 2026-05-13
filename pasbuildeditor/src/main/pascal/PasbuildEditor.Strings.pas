@@ -7,6 +7,14 @@
   Licensed under the BSD-3-Clause License. See LICENSE file for details.
 }
 
+{ All user-visible strings live here as resourcestrings, organised by the menu
+  page they appear on.  There are two kinds:
+
+    SDesc*   — footer descriptions shown at the bottom of a menu item.
+    SLabel*  — menu item labels; embed & before the hotkey character (e.g.
+               '&Name' makes N the hotkey).  Use TMenuItem.CreateEmbeddedHotkey
+               so the & is stripped from Label_ automatically. }
+
 unit PasbuildEditor.Strings;
 
 {$mode objfpc}{$H+}
@@ -14,7 +22,7 @@ unit PasbuildEditor.Strings;
 interface
 
 resourcestring
-  { Identity page }
+  { Main / identity page }
   SDescName        = 'The project name used in generated files and dependency references.';
   SDescVersion     = 'Semantic version (e.g. 1.0.0). Leave blank to inherit from a parent POM.';
   SDescAuthor      = 'Author name or contact, written into generated project files.';
@@ -23,22 +31,37 @@ resourcestring
   SDescProjectUrl  = 'URL of the project homepage or documentation site.';
   SDescRepoUrl     = 'URL of the source code repository (e.g. GitHub clone URL).';
   SDescProfiles    = 'Named build profiles (e.g. debug, release) with their own defines and compiler options.';
-
-  { Main page }
   SDescBuildDeps   = 'Compiler settings, source paths, and external package dependencies for this project.';
 
-  { Build page }
-  SDescMainSource    = 'Entry-point source file passed to the compiler (e.g. Main.pas).';
-  SDescOutputDir     = 'Directory where compiled binaries and units are written.';
-  SDescSourceDir     = 'Root of the source tree; used to locate units automatically.';
-  SDescExeName       = 'Name of the produced executable (without extension).';
-  SDescUnitPaths     = 'Extra paths searched for compiled units, with optional conditions.';
-  SDescDefines       = 'Conditional defines passed to the compiler (e.g. DEBUG, UNICODE).';
+  SLabelName        = '&Name';
+  SLabelVersion     = '&Version';
+  SLabelAuthor      = '&Author';
+  SLabelLicense     = '&License';
+  SLabelDescription = 'De&scription';
+  SLabelProjectUrl  = 'Project &URL';
+  SLabelRepoUrl     = '&Repo URL';
+  SLabelProfiles    = '&Profiles';
+  SLabelRunBuild    = 'Run &build';
+  SLabelBuildDeps   = 'Buil&d / Dependencies';
+  SLabelModules     = '&Modules / Children';
+
+  { Build / dependencies page }
+  SDescMainSource        = 'Entry-point source file passed to the compiler (e.g. Main.pas).';
+  SDescOutputDir         = 'Directory where compiled binaries and units are written.';
+  SDescSourceDir         = 'Root of the source tree; used to locate units automatically.';
+  SDescExeName           = 'Name of the produced executable (without extension).';
+  SDescUnitPaths         = 'Extra paths searched for compiled units, with optional conditions.';
+  SDescDefines           = 'Conditional defines passed to the compiler (e.g. DEBUG, UNICODE).';
   SDescDependencies      = 'External package dependencies resolved from the local repository.';
   SDescModuleDeps        = 'Sibling modules in this multi-module project that this module depends on.';
   SDescBootstrapExclude  = 'Units excluded from the auto-generated bootstrap program.';
   SDescSourcePkgIncludes = 'Extra paths included when running pasbuild source-package.';
   SDescIncludePaths      = 'Extra directories searched for include files (FPC -Fi flag).';
+
+  { Unit paths sub-menu }
+  SManualPathsOn   = '[x] Manual paths (relative to project root)';
+  SManualPathsOff  = '[ ] Manual paths (relative to source base dir)';
+  SDescManualPaths = 'OFF: relative to source base dir. ON: relative to project root.';
 
   { Profiles page }
   SDescProfileID      = 'Unique identifier for this profile, used with -p on the command line.';
@@ -53,7 +76,7 @@ resourcestring
   SDescScanMods   = 'Scan subdirectories for existing project.xml files to add as modules.';
   SDescAddModPath = 'Manually enter the relative path of an existing module.';
 
-  { Dependencies }
+  { Dependencies page }
   SDescDepVersion = 'The version of this package to use. Choose from available repository versions.';
   SDescRemoveDep  = 'Remove this dependency from the project.';
 

@@ -1617,14 +1617,18 @@ end;
 function RunUnitPathEditor(AProject: TProjectBase; AParentPOM: TProjectPOM;
   const ABreadcrumb, ABaseDir: string;
   var APath, ACondition: string;
-  const ATitle: string = 'Unit Path'): Boolean;
+  const ATitle: string = 'Unit Path';
+  ADeleted: PBoolean = nil;
+  const ASrcPrefix: string = ''): Boolean;
 var
   Menu:      TMenu;
   Sel, It:   TMenuItem;
   NewVal:    string;
   LastLabel: string;
+  Prefix:    string;
 begin
   Result    := False;
+  if Assigned(ADeleted) then ADeleted^ := False;
   LastLabel := '';
   repeat
     Menu := TMenu.Create(ABreadcrumb);
@@ -1637,6 +1641,8 @@ begin
       It.DimValue := (ACondition = ''); Menu.Add(It);
       Menu.AddSeparator;
       Menu.Add(TMenuItem.Create('OK',     nil, '', 'O'));
+      if Assigned(ADeleted) then
+        Menu.Add(TMenuItem.Create('Delete', nil, '', 'D'));
       Menu.Add(TMenuItem.Create('Cancel', nil, '', 'X'));
 
       if LastLabel <> '' then Menu.SelectByLabel(LastLabel);
@@ -1647,8 +1653,26 @@ begin
 
       if Sel.Label_ = 'Path' then
       begin
-        NewVal := APath;
-        if RunPathPicker(ABaseDir, ABreadcrumb + ' > Path', True, NewVal) then APath := NewVal;
+        { Enter picker showing full project-relative path (e.g. src/main/pascal/platform/unix) }
+        if (ASrcPrefix <> '') and (APath <> '') then
+          NewVal := IncludeTrailingPathDelimiter(ASrcPrefix) + APath
+        else
+          NewVal := APath;
+        if RunPathPicker(ABaseDir, ABreadcrumb + ' > Path', True, NewVal) then
+        begin
+          { Strip the source prefix back to get the stored form }
+          Prefix := IncludeTrailingPathDelimiter(ASrcPrefix);
+          if (ASrcPrefix <> '') and
+             (Copy(NewVal, 1, Length(Prefix)) = Prefix) then
+            NewVal := Copy(NewVal, Length(Prefix) + 1, MaxInt);
+          if (NewVal <> '') and ((Copy(NewVal, 1, 3) = '../') or (NewVal = '..')) then
+          begin
+            if Confirm('Path is outside the source directory. Are you sure?') then
+              APath := NewVal;
+          end
+          else
+            APath := NewVal;
+        end;
       end
       else if Sel.Label_ = 'Condition' then
       begin
@@ -1668,6 +1692,14 @@ begin
             Result := True;
         end;
         if Result then Break;
+      end
+      else if Sel.Label_ = 'Delete' then
+      begin
+        if Confirm('Delete path ' + APath + '?') then
+        begin
+          ADeleted^ := True;
+          Break;
+        end;
       end
       else if Sel.Label_ = 'Cancel' then
         Break;
@@ -1877,12 +1909,14 @@ procedure TUIController.RunUnitPathsMenu(P: TProjectCommon;
 var
   Menu:      TMenu;
   Sel:       TMenuItem;
+  It:        TMenuItem;
   I:         Integer;
   CP:        TConditionalPath;
   Path, Cond: string;
   LastLabel: string;
   Common, First, Other, OtherDir: string;
   ProjectDir, SrcBaseDir: string;
+  Deleted:   Boolean;
 begin
   LastLabel  := '';
   ProjectDir := ExtractFilePath(ExpandFileName(FProject.FileName));
@@ -1892,24 +1926,50 @@ begin
     try
       Menu.AddHeader(ATitle + ' (' + IntToStr(AList.Count) + ')');
       Menu.AddSeparator;
+      if AKind = 'unit' then
+      begin
+        if P.ManualUnitPaths then
+          It := TMenuItem.Create(SManualPathsOn, nil, '', 'M')
+        else
+          It := TMenuItem.Create(SManualPathsOff, nil, '', 'M');
+        It.Desc := SDescManualPaths;
+        Menu.Add(It);
+        Menu.AddSeparator;
+      end;
       for I := 0 to AList.Count - 1 do
       begin
         CP := AList[I];
         if CP.Condition <> '' then
-          Menu.Add(TMenuItem.Create(CP.Path, nil, '[' + CP.Condition + ']'))
+          It := TMenuItem.Create(CP.Path, nil, '[' + CP.Condition + ']')
         else
-          Menu.Add(TMenuItem.Create(CP.Path, nil));
+          It := TMenuItem.Create(CP.Path, nil);
+        Menu.Add(It);
       end;
       Menu.AddSeparator;
-      Menu.Add(TMenuItem.Create('Add path', nil, '', 'A'));
+      It := TMenuItem.Create('Add path', nil, '', 'A');
+      Menu.Add(It);
 
       if LastLabel <> '' then Menu.SelectByLabel(LastLabel);
       Sel := Menu.Run;
       if GSaveRequested then begin SaveProject; GSaveRequested := False; Continue; end;
       if GQuitRequested or GCtrlCRequested or GCtrlXRequested or
-         ((Sel = nil) and (Menu.UnhandledChar = #0)) then Break;
+         ((Sel = nil) and (Menu.UnhandledChar = #0)) then
+      begin
+        if P.ManualUnitPaths and (AList.Count = 0) then
+          ShowStatusMsg('Warning: manual paths enabled but no paths added — at least one path is recommended.', clYellow);
+        Break;
+      end;
       if Sel = nil then Continue;
       LastLabel := Sel.Label_;
+
+      if (Sel.Label_ = SManualPathsOn) or (Sel.Label_ = SManualPathsOff) then
+      begin
+        P.ManualUnitPaths := not P.ManualUnitPaths;
+        SetModified;
+        if P.ManualUnitPaths then LastLabel := SManualPathsOn
+        else LastLabel := SManualPathsOff;
+        Continue;
+      end;
 
       if Sel.Label_ = 'Add path' then
       begin
@@ -1933,7 +1993,7 @@ begin
         if RunUnitPathEditor(FProject, FParentPOM,
              FBreadcrumb + ' > ' + ATitle + ' > Add',
              SrcBaseDir, Path, Cond,
-             Copy(ATitle, 1, Length(ATitle) - 1)) and (Path <> '') then
+             Copy(ATitle, 1, Length(ATitle) - 1), nil, P.SourceDirectory) and (Path <> '') then
         begin
           if AKind = 'include' then
             P.AddIncludePath(Path, Cond)
@@ -1950,12 +2010,27 @@ begin
           if AList[I].Path = Sel.Label_ then begin CP := AList[I]; Break; end;
         if not Assigned(CP) then Continue;
 
+        if Menu.DeletePressed then
+        begin
+          if Confirm('Remove path ' + CP.Path + '?') then
+          begin
+            if AKind = 'include' then
+              P.RemoveIncludePath(CP)
+            else
+              P.RemoveUnitPath(CP);
+            SetModified;
+            LastLabel := '';
+          end;
+          Continue;
+        end;
+
         Path := CP.Path;
         Cond := CP.Condition;
+        Deleted := False;
         if RunUnitPathEditor(FProject, FParentPOM,
              FBreadcrumb + ' > ' + ATitle + ' > ' + Path,
              SrcBaseDir, Path, Cond,
-             Copy(ATitle, 1, Length(ATitle) - 1)) then
+             Copy(ATitle, 1, Length(ATitle) - 1), @Deleted, P.SourceDirectory) then
         begin
           if AKind = 'include' then
           begin
@@ -1970,20 +2045,14 @@ begin
           SetModified;
           LastLabel := Path;
         end
-        else
+        else if Deleted then
         begin
-          if Menu.ExitedLeft then
-          begin
-            if Confirm('Remove path ' + CP.Path + '?') then
-            begin
-              if AKind = 'include' then
-                P.RemoveIncludePath(CP)
-              else
-                P.RemoveUnitPath(CP);
-              SetModified;
-              LastLabel := '';
-            end;
-          end;
+          if AKind = 'include' then
+            P.RemoveIncludePath(CP)
+          else
+            P.RemoveUnitPath(CP);
+          SetModified;
+          LastLabel := '';
         end;
       end;
     finally
@@ -3388,10 +3457,10 @@ begin
     Menu := TMenu.Create(FBreadcrumb);
     try
       Menu.AddHeader('Identity  [' + FProject.ProjectTypeLabel + ']');
-      It := TMenuItem.Create('Name', nil, FProject.Name, 'N');
+      It := TMenuItem.CreateEmbeddedHotkey(SLabelName, nil, FProject.Name);
       It.Desc := SDescName; Menu.Add(It);
 
-      It := TMenuItem.Create('Version', nil, '', 'V');
+      It := TMenuItem.CreateEmbeddedHotkey(SLabelVersion, nil);
       if FProject.Version <> '' then
         It.Value := FProject.Version
       else if Assigned(FParentPOM) and (FParentPOM.Version <> '') then
@@ -3400,35 +3469,35 @@ begin
         begin It.Value := '(inherited)'; It.DimValue := True; end;
       It.Desc := SDescVersion; Menu.Add(It);
 
-      It := TMenuItem.Create('Author', nil, '', 'A');
+      It := TMenuItem.CreateEmbeddedHotkey(SLabelAuthor, nil);
       if FProject.Author <> '' then
         It.Value := FProject.Author
       else if Assigned(FParentPOM) and (FParentPOM.Author <> '') then
         begin It.Value := FParentPOM.Author + ' (inherited)'; It.DimValue := True; end;
       It.Desc := SDescAuthor; Menu.Add(It);
 
-      It := TMenuItem.Create('License', nil, '', 'L');
+      It := TMenuItem.CreateEmbeddedHotkey(SLabelLicense, nil);
       if FProject.License <> '' then
         It.Value := FProject.License
       else if Assigned(FParentPOM) and (FParentPOM.License <> '') then
         begin It.Value := FParentPOM.License + ' (inherited)'; It.DimValue := True; end;
       It.Desc := SDescLicense; Menu.Add(It);
 
-      It := TMenuItem.Create('Description', nil, '', 'D');
+      It := TMenuItem.CreateEmbeddedHotkey(SLabelDescription, nil);
       if FProject.Description <> '' then
         It.Value := FProject.Description
       else if Assigned(FParentPOM) and (FParentPOM.Description <> '') then
         begin It.Value := FParentPOM.Description + ' (inherited)'; It.DimValue := True; end;
       It.Desc := SDescDescription; Menu.Add(It);
 
-      It := TMenuItem.Create('Project URL', nil, '', 'U');
+      It := TMenuItem.CreateEmbeddedHotkey(SLabelProjectUrl, nil);
       if FProject.ProjectUrl <> '' then
         It.Value := FProject.ProjectUrl
       else if Assigned(FParentPOM) and (FParentPOM.ProjectUrl <> '') then
         begin It.Value := FParentPOM.ProjectUrl + ' (inherited)'; It.DimValue := True; end;
       It.Desc := SDescProjectUrl; Menu.Add(It);
 
-      It := TMenuItem.Create('Repo URL', nil, '', 'R');
+      It := TMenuItem.CreateEmbeddedHotkey(SLabelRepoUrl, nil);
       if FProject.RepoUrl <> '' then
         It.Value := FProject.RepoUrl
       else if Assigned(FParentPOM) and (FParentPOM.RepoUrl <> '') then
@@ -3447,17 +3516,17 @@ begin
       finally
         ProfNames.Free;
       end;
-      It := TMenuItem.Create('Profiles', nil, ProfVal, 'P');
+      It := TMenuItem.CreateEmbeddedHotkey(SLabelProfiles, nil, ProfVal);
       It.DimValue := (FProject.Profiles.Count = 0);
       It.Desc := SDescProfiles; Menu.Add(It);
 
-      It := TMenuItem.Create('Run build', nil, '', 'B');
+      It := TMenuItem.CreateEmbeddedHotkey(SLabelRunBuild, nil);
       It.Desc := 'Run a pasbuild goal and view output live';
       Menu.Add(It);
 
       if FProject is TProjectCommon then
       begin
-        It := TMenuItem.Create('Build / Dependencies', nil, '', 'D');
+        It := TMenuItem.CreateEmbeddedHotkey(SLabelBuildDeps, nil);
         It.Desc := SDescBuildDeps;
         Menu.Add(It);
       end;
@@ -3489,7 +3558,7 @@ begin
         finally
           ModNames.Free;
         end;
-        It := TMenuItem.Create('Modules / Children', nil, ModVal, 'M');
+        It := TMenuItem.CreateEmbeddedHotkey(SLabelModules, nil, ModVal);
         It.DimValue := (TProjectPOM(FProject).Modules.Count = 0);
         Menu.Add(It);
       end;
