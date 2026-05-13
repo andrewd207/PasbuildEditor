@@ -106,21 +106,16 @@ var
   procedure DrawFilterBar;
   var
     PromptStr: string;
-    FieldW, Scroll, ViewCur: Integer;
+    FieldW, Scroll: Integer;
     Label_: string;
   begin
     PromptStr := ' Search: ';
     FieldW    := Term.Width - Length(PromptStr) - 1;
     if FieldW < 4 then FieldW := 4;
 
-    { Compute scroll so cursor stays visible }
-    Scroll  := 0;
-    ViewCur := Cur;
-    if ViewCur > FieldW then
-    begin
-      Scroll  := Cur - FieldW;
-      ViewCur := FieldW;
-    end;
+    Scroll := 0;
+    if Cur > FieldW then
+      Scroll := Cur - FieldW;
 
     Term.GotoXY(1, 3);
     Term.ClearToEOL;
@@ -131,7 +126,6 @@ var
     Term.WriteStr(Label_);
     Term.ClearToEOL;
     DrawRule(4, 1, Term.Width);
-    Term.GotoXY(Length(PromptStr) + ViewCur, 3);
     Term.ResetColors;
   end;
 
@@ -211,6 +205,24 @@ var
     Term.ResetColors;
   end;
 
+  procedure PlaceCursor;
+  var
+    PromptStr: string;
+    FieldW, Scroll, ViewCur: Integer;
+  begin
+    PromptStr := ' Search: ';
+    FieldW    := Term.Width - Length(PromptStr) - 1;
+    if FieldW < 4 then FieldW := 4;
+    Scroll  := 0;
+    ViewCur := Cur;
+    if ViewCur > FieldW then
+    begin
+      Scroll  := Cur - FieldW;
+      ViewCur := FieldW;
+    end;
+    Term.GotoXY(Length(PromptStr) + ViewCur, 3);
+  end;
+
   procedure FullDraw;
   begin
     Term.ClearScreen;
@@ -218,6 +230,7 @@ var
     DrawFilterBar;
     DrawList;
     DrawFooter;
+    PlaceCursor;
     Term.FlushOutput;
   end;
 
@@ -226,6 +239,7 @@ var
     DrawFilterBar;
     DrawList;
     DrawFooter;
+    PlaceCursor;
     Term.FlushOutput;
   end;
 
