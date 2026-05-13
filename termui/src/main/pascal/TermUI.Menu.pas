@@ -64,6 +64,8 @@ type
     procedure DrawItem(I: Integer; Full: Boolean);
     procedure DrawHelp;
     procedure EnsureVisible;
+    procedure Draw;
+    procedure HandleKey(const K: TKeyEvent);
   protected
     procedure DoPaint; override;
     function  DoKeyDown(var Key: TKeyEvent): Boolean; override;
@@ -76,9 +78,6 @@ type
     procedure AddHeader(const ALabel: string);
     procedure SelectByLabel(const ALabel: string);
 
-    { Full repaint + flush. Also called internally on scroll. }
-    procedure Draw;
-    procedure HandleKey(const K: TKeyEvent);
     { Returns selected item, or nil on back/quit.
       Check ExitedLeft to distinguish Left-arrow back from Esc.
       Internally calls Application.ShowModal(Self). }
@@ -707,149 +706,228 @@ begin
 end;
 
 { ══════════════════════════════════════════════════════════════════════
-  EditLine — inline single-line editor
+  TEditLineForm — inline single-line editor as a TForm
+  ══════════════════════════════════════════════════════════════════════ }
+
+type
+  TEditLineForm = class(TForm)
+  private
+    FPrompt:    string;
+    FBuf:       string;
+    FCur:       Integer;
+    FScroll:    Integer;
+    FRow:       Integer;
+    FResult:    string;
+    FAccepted:  Boolean;
+    FPromptLen: Integer;
+    FFieldW:    Integer;
+
+    procedure CalcScroll;
+    function  WordLeft: Integer;
+    function  WordRight: Integer;
+  protected
+    procedure DoPaint; override;
+    function  DoKeyDown(var Key: TKeyEvent): Boolean; override;
+  public
+    procedure SetParams(const APrompt, ACurrent: string; ARow: Integer);
+    function  RunModal: Boolean;
+    property  Accepted: Boolean read FAccepted;
+    property  Result_:  string  read FResult;
+  end;
+
+procedure TEditLineForm.SetParams(const APrompt, ACurrent: string; ARow: Integer);
+begin
+  FPrompt    := APrompt;
+  FBuf       := ACurrent;
+  FCur       := Length(ACurrent) + 1;
+  FScroll    := 0;
+  FAccepted  := False;
+  FResult    := '';
+  if ARow <= 0 then FRow := Term.Height div 2 else FRow := ARow;
+  FPromptLen := 1 + Length(APrompt) + 2;
+  FFieldW    := Term.Width - FPromptLen;
+  if FFieldW < 4 then FFieldW := 4;
+  Invalidate;
+end;
+
+procedure TEditLineForm.CalcScroll;
+var ViewCur: Integer;
+begin
+  ViewCur := FCur - FScroll;
+  if ViewCur < 1 then FScroll := FCur - 1;
+  if FCur - FScroll > FFieldW then FScroll := FCur - FFieldW;
+end;
+
+function TEditLineForm.WordLeft: Integer;
+var I: Integer;
+begin
+  I := FCur - 1;
+  while (I > 1) and (FBuf[I - 1] = ' ') do Dec(I);
+  while (I > 1) and (FBuf[I - 1] <> ' ') do Dec(I);
+  Result := I;
+end;
+
+function TEditLineForm.WordRight: Integer;
+var I, Len: Integer;
+begin
+  Len := Length(FBuf);
+  I   := FCur;
+  while (I <= Len) and (FBuf[I] <> ' ') do Inc(I);
+  while (I <= Len) and (FBuf[I] = ' ') do Inc(I);
+  Result := I;
+end;
+
+procedure TEditLineForm.DoPaint;
+begin
+  CalcScroll;
+  Term.GotoXY(1, FRow);
+  Term.ClearToEOL;
+  Term.SetFG(clBrightYellow);
+  Term.WriteStr(' ' + FPrompt + ': ');
+  Term.SetFG(clWhite);
+  Term.WriteStr(Copy(FBuf, FScroll + 1, FFieldW));
+  Term.ClearToEOL;
+  Term.ResetColors;
+  Term.ShowCursor;
+  Term.GotoXY(FPromptLen + (FCur - FScroll), FRow);
+  inherited DoPaint;
+end;
+
+function TEditLineForm.DoKeyDown(var Key: TKeyEvent): Boolean;
+begin
+  Result := True;
+  case Key.Code of
+    kcEnter: begin FResult := FBuf; FAccepted := True; Close(1); end;
+    kcEscape: Close(1);
+    kcLeft:      begin if FCur > 1 then Dec(FCur); Invalidate; end;
+    kcRight:     begin if FCur <= Length(FBuf) then Inc(FCur); Invalidate; end;
+    kcHome:      begin FCur := 1;                    Invalidate; end;
+    kcEnd:       begin FCur := Length(FBuf) + 1;     Invalidate; end;
+    kcCtrlLeft:  begin FCur := WordLeft;              Invalidate; end;
+    kcCtrlRight: begin FCur := WordRight;             Invalidate; end;
+    kcBackspace:
+      if FCur > 1 then begin Delete(FBuf, FCur - 1, 1); Dec(FCur); Invalidate; end;
+    kcDelete:
+      if FCur <= Length(FBuf) then begin Delete(FBuf, FCur, 1); Invalidate; end;
+    kcChar:
+      if Key.Ch >= ' ' then begin Insert(Key.Ch, FBuf, FCur); Inc(FCur); Invalidate; end;
+    else
+      Result := False;
+  end;
+end;
+
+function TEditLineForm.RunModal: Boolean;
+begin
+  FAccepted := False;
+  ModalResult := 0;
+  Application.ShowModal(Self);
+  Term.HideCursor;
+  Term.ResetColors;
+  Result := FAccepted;
+end;
+
+{ ══════════════════════════════════════════════════════════════════════
+  EditLine — wrapper around TEditLineForm
   ══════════════════════════════════════════════════════════════════════ }
 
 function EditLine(const APrompt, ACurrent: string; var AResult: string;
   ARow: Integer = 0): Boolean;
 var
-  Row, PromptLen, FieldW: Integer;
-  Buf:    string;
-  Cur:    Integer;  { 1..Length(Buf)+1 }
-  Scroll: Integer;  { index of leftmost visible char (0-based) }
-  ViewCur: Integer;
-  K:      TKeyEvent;
-
-  procedure EnsureVisible;
-  begin
-    ViewCur := Cur - Scroll;
-    if ViewCur < 1 then
-    begin
-      Scroll  := Cur - 1;
-      ViewCur := 1;
-    end;
-    if ViewCur > FieldW then
-    begin
-      Scroll  := Cur - FieldW;
-      ViewCur := FieldW;
-    end;
-  end;
-
-  function WordLeft: Integer;
-  var I: Integer;
-  begin
-    I := Cur - 1;
-    while (I > 1) and (Buf[I - 1] = ' ') do Dec(I);
-    while (I > 1) and (Buf[I - 1] <> ' ') do Dec(I);
-    Result := I;
-  end;
-
-  function WordRight: Integer;
-  var I, Len: Integer;
-  begin
-    Len := Length(Buf);
-    I   := Cur;
-    while (I <= Len) and (Buf[I] <> ' ') do Inc(I);
-    while (I <= Len) and (Buf[I] = ' ') do Inc(I);
-    Result := I;
-  end;
-
+  Form: TEditLineForm;
 begin
-  Buf    := ACurrent;
-  Cur    := Length(Buf) + 1;
-  Scroll := 0;
-  Result := False;
-
-  if ARow <= 0 then
-    Row := Term.Height div 2
-  else
-    Row := ARow;
-
-  PromptLen := 1 + Length(APrompt) + 2;  { ' ' + prompt + ': ' }
-  FieldW    := Term.Width - PromptLen;
-  if FieldW < 4 then FieldW := 4;
-
-  Term.ShowCursor;
-  repeat
-    EnsureVisible;
-    Term.GotoXY(1, Row);
-    Term.ClearToEOL;
-    Term.SetFG(clBrightYellow);
-    Term.WriteStr(' ' + APrompt + ': ');
-    Term.SetFG(clWhite);
-    Term.WriteStr(Copy(Buf, Scroll + 1, FieldW));
-    Term.ClearToEOL;
-    Term.GotoXY(PromptLen + ViewCur, Row);
-    Term.FlushOutput;
-
-    K := Term.ReadKey;
-    case K.Code of
-      kcEnter: begin
-        AResult := Buf;
-        Result  := True;
-        Break;
-      end;
-      kcEscape: Break;
-      kcLeft:      if Cur > 1 then Dec(Cur);
-      kcRight:     if Cur <= Length(Buf) then Inc(Cur);
-      kcHome:      Cur := 1;
-      kcEnd:       Cur := Length(Buf) + 1;
-      kcCtrlLeft:  Cur := WordLeft;
-      kcCtrlRight: Cur := WordRight;
-      kcBackspace:
-        if Cur > 1 then
-        begin
-          Delete(Buf, Cur - 1, 1);
-          Dec(Cur);
-        end;
-      kcDelete:
-        if Cur <= Length(Buf) then
-          Delete(Buf, Cur, 1);
-      kcChar:
-        if K.Ch >= ' ' then
-        begin
-          Insert(K.Ch, Buf, Cur);
-          Inc(Cur);
-        end;
-    end;
-  until False;
-
-  Term.HideCursor;
-  Term.ResetColors;
+  Form := TEditLineForm.Create;
+  try
+    Form.SetParams(APrompt, ACurrent, ARow);
+    Result := Form.RunModal;
+    if Result then AResult := Form.Result_;
+  finally
+    Form.Free;
+  end;
 end;
 
 { ══════════════════════════════════════════════════════════════════════
-  Confirm
+  TConfirmForm — yes/no prompt as a TForm
   ══════════════════════════════════════════════════════════════════════ }
 
-function Confirm(const AMsg: string; ADefault: Boolean = False): Boolean;
-var
-  K:       TKeyEvent;
-  Options: string;
+type
+  TConfirmForm = class(TForm)
+  private
+    FMsg:     string;
+    FDefault: Boolean;
+    FResult:  Boolean;
+  protected
+    procedure DoPaint; override;
+    function  DoKeyDown(var Key: TKeyEvent): Boolean; override;
+  public
+    procedure SetParams(const AMsg: string; ADefault: Boolean);
+    function  RunModal: Boolean;
+    property  Result_: Boolean read FResult;
+  end;
+
+procedure TConfirmForm.SetParams(const AMsg: string; ADefault: Boolean);
 begin
-  if ADefault then
-    Options := '(yes/no) [Y]'
-  else
-    Options := '(yes/no) [N]';
+  FMsg     := AMsg;
+  FDefault := ADefault;
+  FResult  := ADefault;
+  Invalidate;
+end;
+
+procedure TConfirmForm.DoPaint;
+var Options: string;
+begin
+  if FDefault then Options := '(yes/no) [Y]' else Options := '(yes/no) [N]';
   Term.InvalidateFront;
   Term.GotoXY(1, Term.Height - 1);
   Term.ClearToEOL;
   ColorHelp;
-  Term.WriteStr(' ' + AMsg + ' ' + Options + ': ');
+  Term.WriteStr(' ' + FMsg + ' ' + Options + ': ');
   Term.ResetColors;
   Term.ShowCursor;
-  Term.FlushOutput;
-  repeat
-    K := Term.ReadKey;
-    if K.Code = kcEnter then begin Result := ADefault; Break; end;
-    if K.Code = kcChar then
-      case UpCase(K.Ch) of
-        'Y': begin Result := True;  Break; end;
-        'N': begin Result := False; Break; end;
+  Term.GotoXY(2 + Length(FMsg) + 1 + Length(Options) + 2, Term.Height - 1);
+  inherited DoPaint;
+end;
+
+function TConfirmForm.DoKeyDown(var Key: TKeyEvent): Boolean;
+begin
+  Result := True;
+  case Key.Code of
+    kcEnter:  begin FResult := FDefault; Close(1); end;
+    kcEscape: begin FResult := False;    Close(1); end;
+    kcChar:
+      case UpCase(Key.Ch) of
+        'Y': begin FResult := True;  Close(1); end;
+        'N': begin FResult := False; Close(1); end;
+        else Result := False;
       end;
-    if K.Code = kcEscape then begin Result := False; Break; end;
-  until False;
+    else
+      Result := False;
+  end;
+end;
+
+function TConfirmForm.RunModal: Boolean;
+begin
+  FResult := FDefault;
+  ModalResult := 0;
+  Application.ShowModal(Self);
   Term.HideCursor;
+  Result := FResult;
+end;
+
+{ ══════════════════════════════════════════════════════════════════════
+  Confirm — wrapper around TConfirmForm
+  ══════════════════════════════════════════════════════════════════════ }
+
+function Confirm(const AMsg: string; ADefault: Boolean = False): Boolean;
+var
+  Form: TConfirmForm;
+begin
+  Form := TConfirmForm.Create;
+  try
+    Form.SetParams(AMsg, ADefault);
+    Result := Form.RunModal;
+  finally
+    Form.Free;
+  end;
 end;
 
 end.

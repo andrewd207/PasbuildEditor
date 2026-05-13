@@ -36,7 +36,7 @@ implementation
 uses
   PasbuildEditor.UI.Colors,
   PasbuildEditor.UIContext,
-  TermUI.Application;
+  TermUI.Application, TermUI.Forms;
 
 { ══════════════════════════════════════════════════════════════════════
   Semver helpers
@@ -212,77 +212,109 @@ begin
   Term.ResetColors;
 end;
 
+type
+  TVersionPickerForm = class(TForm)
+  private
+    FPkgName:  string;
+    FVersions: TPackageVersionList;
+    FSel:      Integer;
+    FAccepted: Boolean;
+    FResult:   string;
+    FTopRow:   Integer;
+  protected
+    procedure DoPaint; override;
+    function  DoKeyDown(var Key: TKeyEvent): Boolean; override;
+  public
+    procedure SetParams(const APkgName: string; AVersions: TPackageVersionList);
+    function  RunModal: Boolean;
+    property  Accepted: Boolean read FAccepted;
+    property  Result_:  string  read FResult;
+  end;
+
+procedure TVersionPickerForm.SetParams(const APkgName: string;
+  AVersions: TPackageVersionList);
+begin
+  FPkgName  := APkgName;
+  FVersions := AVersions;
+  FSel      := 0;
+  FAccepted := False;
+  FResult   := '';
+  FTopRow   := 5;
+  Invalidate;
+end;
+
+procedure TVersionPickerForm.DoPaint;
+var I, Row: Integer; Ver: TPackageVersion;
+begin
+  Term.ClearScreen;
+  DrawHeader('Select version: ' + FPkgName, 1);
+  FTopRow := 5;
+  for I := 0 to FVersions.Count - 1 do
+  begin
+    Row := FTopRow + I;
+    if Row > Term.Height - 3 then Break;
+    Ver := FVersions[I];
+    Term.GotoXY(1, Row); Term.ClearToEOL;
+    if I = FSel then ColorSelFG else ColorNormal;
+    if I = FSel then Term.WriteStr(' > ') else Term.WriteStr('   ');
+    Term.WriteStr(PadRight(Ver.Version, 20));
+    if Pos('-', Ver.Version) > 0 then
+    begin
+      if I = FSel then Term.SetFG(clBlack) else ColorOld;
+      Term.WriteStr(' pre-release');
+    end;
+    if I = 0 then
+    begin
+      if I = FSel then Term.SetFG(clBlack) else ColorNew;
+      Term.WriteStr(' [newest]');
+    end;
+    if Ver.Platform <> '' then
+    begin
+      if I = FSel then Term.SetFG(clBlack) else ColorSource;
+      Term.WriteStr('  ' + Ver.Platform);
+    end;
+    Term.ResetColors;
+  end;
+  DrawRule(Term.Height - 1, 1, Term.Width);
+  Term.GotoXY(1, Term.Height); ColorHelp;
+  Term.WriteStr(' ↑↓ Move   Enter Select   Esc Cancel ');
+  Term.ResetColors;
+  inherited DoPaint;
+end;
+
+function TVersionPickerForm.DoKeyDown(var Key: TKeyEvent): Boolean;
+begin
+  Result := True;
+  case Key.Code of
+    kcUp:     begin if FSel > 0 then Dec(FSel); Invalidate; end;
+    kcDown:   begin if FSel < FVersions.Count - 1 then Inc(FSel); Invalidate; end;
+    kcEnter:  begin FResult := FVersions[FSel].Version; FAccepted := True; Close(1); end;
+    kcEscape: Close(1);
+    else Result := False;
+  end;
+end;
+
+function TVersionPickerForm.RunModal: Boolean;
+begin
+  FAccepted := False;
+  ModalResult := 0;
+  Application.ShowModal(Self);
+  Result := FAccepted;
+end;
+
 function PickVersion(const APkgName: string; Versions: TPackageVersionList;
   out AVersion: string): Boolean;
 var
-  Sel, I, TopRow, VR, Row: Integer;
-  K:   TKeyEvent;
-  Ver: TPackageVersion;
+  Form: TVersionPickerForm;
 begin
-  Result   := False;
-  AVersion := '';
-  Sel      := 0;
-
-  TopRow := 5;
-  VR     := Term.Height - TopRow - 3;
-
-  repeat
-    Term.ClearScreen;
-    DrawHeader('Select version: ' + APkgName, 1);
-
-    for I := 0 to Versions.Count - 1 do
-    begin
-      Row := TopRow + I;
-      if Row > Term.Height - 3 then Break;
-      Ver := Versions[I];
-      Term.GotoXY(1, Row);
-      Term.ClearToEOL;
-      if I = Sel then
-        ColorSelFG
-      else
-        ColorNormal;
-      if I = Sel then
-        Term.WriteStr(' > ')
-      else
-        Term.WriteStr('   ');
-      Term.WriteStr(PadRight(Ver.Version, 20));
-      if Pos('-', Ver.Version) > 0 then
-      begin
-        if I = Sel then Term.SetFG(clBlack) else ColorOld;
-        Term.WriteStr(' pre-release');
-      end;
-      if I = 0 then
-      begin
-        if I = Sel then Term.SetFG(clBlack) else ColorNew;
-        Term.WriteStr(' [newest]');
-      end;
-      if Ver.Platform <> '' then
-      begin
-        if I = Sel then Term.SetFG(clBlack) else ColorSource;
-        Term.WriteStr('  ' + Ver.Platform);
-      end;
-      Term.ResetColors;
-    end;
-
-    DrawRule(Term.Height - 1, 1, Term.Width);
-    Term.GotoXY(1, Term.Height);
-    ColorHelp;
-    Term.WriteStr(' ↑↓ Move   Enter Select   Esc Cancel ');
-    Term.ResetColors;
-    Term.FlushOutput;
-
-    K := Term.ReadKey;
-    case K.Code of
-      kcUp:     if Sel > 0 then Dec(Sel);
-      kcDown:   if Sel < Versions.Count - 1 then Inc(Sel);
-      kcEnter:  begin
-        AVersion := Versions[Sel].Version;
-        Result := True;
-        Break;
-      end;
-      kcEscape: Break;
-    end;
-  until False;
+  Form := TVersionPickerForm.Create;
+  try
+    Form.SetParams(APkgName, Versions);
+    Result := Form.RunModal;
+    if Result then AVersion := Form.Result_;
+  finally
+    Form.Free;
+  end;
 end;
 
 function CompareSearchResultsByName(const A, B: TSearchResult): Integer;
@@ -290,237 +322,250 @@ begin
   Result := CompareText(A.Name, B.Name);
 end;
 
+type
+  TPackageSearchForm = class(TForm)
+  private
+    FResolver:     TDependencyResolver;
+    FExcludeNames: TStrings;
+    FBreadcrumb:   string;
+    FAllResults:   TSearchResultList;
+    FShown:        TSearchResultList;
+    FFilter:       string;
+    FSel:          Integer;
+    FTopRow:       Integer;
+    FFilterFocused: Boolean;
+    FAccepted:     Boolean;
+    FOutName:      string;
+    FOutVersion:   string;
+
+    procedure BuildShown;
+  protected
+    procedure DoPaint; override;
+    function  DoKeyDown(var Key: TKeyEvent): Boolean; override;
+  public
+    constructor Create(const ATitle: string = ''); override;
+    destructor  Destroy; override;
+
+    procedure SetParams(AResolver: TDependencyResolver;
+      AExcludeNames: TStrings; const ABreadcrumb: string);
+    function  RunModal: Boolean;
+    property  Accepted:    Boolean read FAccepted;
+    property  OutName:     string  read FOutName;
+    property  OutVersion:  string  read FOutVersion;
+  end;
+
+constructor TPackageSearchForm.Create(const ATitle: string);
+begin
+  inherited Create(ATitle);
+  FAllResults := TSearchResultList.Create(True);
+  FShown      := TSearchResultList.Create(False);
+  FTopRow     := 5;
+  FFilterFocused := True;
+  FAccepted   := False;
+end;
+
+destructor TPackageSearchForm.Destroy;
+begin
+  FShown.Free;
+  FAllResults.Free;
+  inherited;
+end;
+
+procedure TPackageSearchForm.SetParams(AResolver: TDependencyResolver;
+  AExcludeNames: TStrings; const ABreadcrumb: string);
+var
+  SrcIdx, I: Integer;
+  Src: TDependencySource;
+  AllPackages: TPackageInfoList;
+  Pkg: TPackageInfo;
+  SR: TSearchResult;
+begin
+  FResolver     := AResolver;
+  FExcludeNames := AExcludeNames;
+  FBreadcrumb   := ABreadcrumb;
+  FAllResults.Clear;
+  for SrcIdx := 0 to AResolver.Sources.Count - 1 do
+  begin
+    Src := AResolver.Sources[SrcIdx];
+    if not Src.IsAvailable then Continue;
+    AllPackages := Src.ListPackages;
+    for I := 0 to AllPackages.Count - 1 do
+    begin
+      Pkg := AllPackages[I];
+      if Assigned(AExcludeNames) and (AExcludeNames.IndexOf(Pkg.Name) >= 0) then Continue;
+      SortVersionsNewest(Pkg.Versions);
+      SR := TSearchResult.Create(Pkg.Name, Src.SourceLabel, Pkg.Versions);
+      FAllResults.Add(SR);
+    end;
+  end;
+  FAllResults.Sort(@CompareSearchResultsByName);
+  FSel := 0;
+  FFilter := '';
+  FFilterFocused := True;
+  BuildShown;
+  Invalidate;
+end;
+
+procedure TPackageSearchForm.BuildShown;
+var J: Integer;
+begin
+  FShown.Clear;
+  for J := 0 to FAllResults.Count - 1 do
+    if (FFilter = '') or (Pos(LowerCase(FFilter), LowerCase(FAllResults[J].Name)) > 0) then
+      FShown.Add(FAllResults[J]);
+end;
+
+procedure TPackageSearchForm.DoPaint;
+var J, R, VR: Integer; Src: TDependencySource;
+begin
+  Term.ClearScreen;
+  DrawHeader(FBreadcrumb, 1);
+  Term.GotoXY(1, 3);
+  for J := 0 to FResolver.Sources.Count - 1 do
+  begin
+    Src := FResolver.Sources[J];
+    if Src.IsAvailable then Term.SetFG(clGreen) else Term.SetFG(clRed);
+    Term.WriteStr(' [' + Src.SourceLabel + ']  ');
+  end;
+  Term.ResetColors;
+  Term.GotoXY(1, 4); Term.ClearToEOL;
+  if FFilterFocused then ColorSearch
+  else begin Term.SetFG(clBrightBlack); Term.SetBG(clDefault); end;
+  Term.WriteStr(' Filter: ' + PadRight(FFilter, Term.Width - 11));
+  Term.ResetColors;
+  FTopRow := 5;
+  VR := Term.Height - FTopRow - 2;
+  for J := 0 to VR - 1 do
+  begin
+    R := FTopRow + J;
+    if J < FShown.Count then
+      DrawSearchRow(R, FShown[J], J = FSel, Term.Width)
+    else
+    begin
+      Term.GotoXY(1, R); Term.ClearToEOL;
+    end;
+  end;
+  if FShown.Count = 0 then
+  begin
+    Term.GotoXY(3, FTopRow); Term.SetFG(clBrightBlack);
+    Term.WriteStr('(no packages match)'); Term.ResetColors;
+  end;
+  DrawRule(Term.Height - 1, 1, Term.Width);
+  Term.GotoXY(1, Term.Height); ColorHelp;
+  Term.WriteStr(' Type to filter   ↑↓/Home/End Move   Enter Select   Esc Cancel ');
+  Term.ResetColors;
+  Term.ShowCursor;
+  if FFilterFocused then
+    Term.GotoXY(10 + Length(FFilter), 4)
+  else
+    Term.GotoXY(1, FTopRow + FSel);
+  inherited DoPaint;
+end;
+
+function TPackageSearchForm.DoKeyDown(var Key: TKeyEvent): Boolean;
+var VR: Integer; SR: TSearchResult; Ver: string;
+begin
+  Result := True;
+  case Key.Code of
+    kcEscape: Close(1);
+
+    kcUp: begin
+      if FSel > 0 then Dec(FSel); FFilterFocused := False; Invalidate;
+    end;
+    kcDown: begin
+      if FSel < FShown.Count - 1 then Inc(FSel); FFilterFocused := False; Invalidate;
+    end;
+    kcPageUp: begin
+      VR := Term.Height - FTopRow - 2; Dec(FSel, VR);
+      if FSel < 0 then FSel := 0; FFilterFocused := False; Invalidate;
+    end;
+    kcPageDown: begin
+      VR := Term.Height - FTopRow - 2; Inc(FSel, VR);
+      if FSel >= FShown.Count then FSel := FShown.Count - 1;
+      FFilterFocused := False; Invalidate;
+    end;
+    kcHome: begin FSel := 0; FFilterFocused := False; Invalidate; end;
+    kcEnd:  begin
+      if FShown.Count > 0 then FSel := FShown.Count - 1;
+      FFilterFocused := False; Invalidate;
+    end;
+
+    kcEnter: begin
+      if (FSel >= 0) and (FSel < FShown.Count) then
+      begin
+        SR := FShown[FSel];
+        if SR.Versions.Count = 0 then
+        begin
+          FOutName := SR.Name; FOutVersion := ''; FAccepted := True; Close(1);
+        end
+        else
+        begin
+          Ver := '';
+          if PickVersion(SR.Name, SR.Versions, Ver) then
+          begin
+            FOutName := SR.Name; FOutVersion := Ver; FAccepted := True; Close(1);
+          end
+          else
+            Invalidate;
+        end;
+      end;
+    end;
+
+    kcBackspace: begin
+      if Length(FFilter) > 0 then
+      begin
+        Delete(FFilter, Length(FFilter), 1);
+        if FSel >= FShown.Count then FSel := 0;
+        BuildShown; FFilterFocused := True; Invalidate;
+      end;
+    end;
+
+    kcChar:
+      if Key.Ch >= ' ' then
+      begin
+        FFilter := FFilter + Key.Ch; FSel := 0;
+        BuildShown; FFilterFocused := True; Invalidate;
+      end
+      else
+        Result := False;
+
+    else
+      Result := False;
+  end;
+end;
+
+function TPackageSearchForm.RunModal: Boolean;
+begin
+  FAccepted := False;
+  ModalResult := 0;
+  Application.ShowModal(Self);
+  Term.HideCursor;
+  Result := FAccepted;
+end;
+
 function RunPackageSearch(AResolver: TDependencyResolver;
   out AOutName, AOutVersion: string;
   AExcludeNames: TStrings;
   const ABreadcrumb: string): Boolean;
 var
-  Filter:      string;
-  AllResults:  TSearchResultList;
-  Shown:       TSearchResultList;
-  AllPackages: TPackageInfoList;
-  Pkg:         TPackageInfo;
-  SrcIdx, I:   Integer;
-  Src:         TDependencySource;
-  SR:          TSearchResult;
-  Sel:           Integer;
-  TopRow, VR:    Integer;
-  K:             TKeyEvent;
-  Row:           Integer;
-  NeedRefresh:   Boolean;
-  FilterFocused: Boolean;
-
-  procedure BuildShown;
-  var J: Integer;
-  begin
-    Shown.Clear;
-    for J := 0 to AllResults.Count - 1 do
-      if (Filter = '') or
-         (Pos(LowerCase(Filter), LowerCase(AllResults[J].Name)) > 0) then
-        Shown.Add(AllResults[J]);
-  end;
-
-  procedure DrawSearchScreen;
-  var J, R: Integer;
-  begin
-    Term.ClearScreen;
-    DrawHeader(ABreadcrumb, 1);
-
-    Term.GotoXY(1, 3);
-    for J := 0 to AResolver.Sources.Count - 1 do
-    begin
-      Src := AResolver.Sources[J];
-      if Src.IsAvailable then
-        Term.SetFG(clGreen)
-      else
-        Term.SetFG(clRed);
-      Term.WriteStr(' [' + Src.SourceLabel + ']  ');
-    end;
-    Term.ResetColors;
-
-    Term.GotoXY(1, 4);
-    Term.ClearToEOL;
-    if FilterFocused then
-      ColorSearch
-    else
-    begin
-      Term.SetFG(clBrightBlack);
-      Term.SetBG(clDefault);
-    end;
-    Term.WriteStr(' Filter: ' + PadRight(Filter, Term.Width - 11));
-    Term.ResetColors;
-
-    TopRow := 5;
-    VR := Term.Height - TopRow - 2;
-
-    for J := 0 to VR - 1 do
-    begin
-      R := TopRow + J;
-      if J < Shown.Count then
-        DrawSearchRow(R, Shown[J], J = Sel, Term.Width)
-      else
-      begin
-        Term.GotoXY(1, R);
-        Term.ClearToEOL;
-      end;
-    end;
-
-    if Shown.Count = 0 then
-    begin
-      Term.GotoXY(3, TopRow);
-      Term.SetFG(clBrightBlack);
-      Term.WriteStr('(no packages match)');
-      Term.ResetColors;
-    end;
-
-    DrawRule(Term.Height - 1, 1, Term.Width);
-    Term.GotoXY(1, Term.Height);
-    ColorHelp;
-    Term.WriteStr(' Type to filter   ↑↓/Home/End Move   Enter Select   Esc Cancel ');
-    Term.ResetColors;
-    if FilterFocused then
-      Term.GotoXY(10 + Length(Filter), 4)
-    else
-      Term.GotoXY(1, TopRow + Sel);
-    Term.FlushOutput;
-  end;
-
+  Form: TPackageSearchForm;
 begin
-  Result        := False;
-  AOutName      := '';
-  AOutVersion   := '';
-  Filter        := '';
-  Sel           := 0;
-  TopRow        := 5;
-  FilterFocused := True;
-
-  AllResults := TSearchResultList.Create(True);
-  Shown      := TSearchResultList.Create(False);
+  Form := TPackageSearchForm.Create;
   try
-    for SrcIdx := 0 to AResolver.Sources.Count - 1 do
+    Form.SetParams(AResolver, AExcludeNames, ABreadcrumb);
+    Result := Form.RunModal;
+    if Result then
     begin
-      Src := AResolver.Sources[SrcIdx];
-      if not Src.IsAvailable then Continue;
-      AllPackages := Src.ListPackages;
-      for I := 0 to AllPackages.Count - 1 do
-      begin
-        Pkg := AllPackages[I];
-        if Assigned(AExcludeNames) and
-           (AExcludeNames.IndexOf(Pkg.Name) >= 0) then
-          Continue;
-        SortVersionsNewest(Pkg.Versions);
-        SR := TSearchResult.Create(Pkg.Name, Src.SourceLabel, Pkg.Versions);
-        AllResults.Add(SR);
-      end;
+      AOutName    := Form.OutName;
+      AOutVersion := Form.OutVersion;
+    end
+    else
+    begin
+      AOutName    := '';
+      AOutVersion := '';
     end;
-    AllResults.Sort(@CompareSearchResultsByName);
-
-    BuildShown;
-    DrawSearchScreen;
-    Term.ShowCursor;
-
-    repeat
-      K := Term.ReadKey;
-      NeedRefresh := False;
-
-      if Term.HasResized then
-      begin
-        DrawSearchScreen;
-        Continue;
-      end;
-
-      case K.Code of
-        kcEscape: Break;
-
-        kcCtrlC: begin GCtrlCRequested := True; GQuitRequested := True; Application.Terminate; Break; end;
-        kcCtrlS: begin GSaveRequested  := True; Break; end;
-        kcCtrlX: begin GCtrlXRequested := True; GQuitRequested := True; Application.Terminate; Break; end;
-
-        kcUp: begin
-          if Sel > 0 then Dec(Sel);
-          FilterFocused := False;
-          NeedRefresh := True;
-        end;
-        kcDown: begin
-          if Sel < Shown.Count - 1 then Inc(Sel);
-          FilterFocused := False;
-          NeedRefresh := True;
-        end;
-        kcPageUp: begin
-          VR := Term.Height - TopRow - 2;
-          Dec(Sel, VR);
-          if Sel < 0 then Sel := 0;
-          FilterFocused := False;
-          NeedRefresh := True;
-        end;
-        kcPageDown: begin
-          VR := Term.Height - TopRow - 2;
-          Inc(Sel, VR);
-          if Sel >= Shown.Count then Sel := Shown.Count - 1;
-          FilterFocused := False;
-          NeedRefresh := True;
-        end;
-        kcHome: begin
-          Sel := 0;
-          FilterFocused := False;
-          NeedRefresh := True;
-        end;
-        kcEnd: begin
-          if Shown.Count > 0 then Sel := Shown.Count - 1;
-          FilterFocused := False;
-          NeedRefresh := True;
-        end;
-
-        kcEnter: begin
-          if (Sel >= 0) and (Sel < Shown.Count) then
-          begin
-            SR := Shown[Sel];
-            if SR.Versions.Count = 0 then
-            begin
-              AOutName    := SR.Name;
-              AOutVersion := '';
-              Result := True;
-            end
-            else
-            begin
-              Term.HideCursor;
-              if PickVersion(SR.Name, SR.Versions, AOutVersion) then
-              begin
-                AOutName := SR.Name;
-                Result   := True;
-              end;
-            end;
-            Break;
-          end;
-        end;
-
-        kcBackspace: begin
-          if Length(Filter) > 0 then
-          begin
-            Delete(Filter, Length(Filter), 1);
-            if Sel >= Shown.Count then Sel := 0;
-            BuildShown;
-            FilterFocused := True;
-            NeedRefresh := True;
-          end;
-        end;
-
-        kcChar: begin
-          Filter := Filter + K.Ch;
-          Sel    := 0;
-          BuildShown;
-          FilterFocused := True;
-          NeedRefresh := True;
-        end;
-      end;
-
-      if NeedRefresh then
-        DrawSearchScreen;
-    until False;
   finally
-    Term.HideCursor;
-    Shown.Free;
-    AllResults.Free;
+    Form.Free;
   end;
 end;
 

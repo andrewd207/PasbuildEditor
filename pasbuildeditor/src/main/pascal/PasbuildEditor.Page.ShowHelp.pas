@@ -22,7 +22,7 @@ implementation
 
 uses
   Classes, SysUtils, fgl,
-  TermUI.Terminal, TermUI.Menu;
+  TermUI.Terminal, TermUI.Menu, TermUI.Forms, TermUI.Application;
 
 const
   HELP_RES_PROJECT = 'HELP_PROJECT';
@@ -285,375 +285,316 @@ const
   HELP_FOOT = ' ↑↓ Scroll   Tab/←→ Switch panel   Enter Jump   Esc Close ';
 
 { ══════════════════════════════════════════════════════════════════════
+  THelpForm — full-screen help viewer as a TForm
+  ══════════════════════════════════════════════════════════════════════ }
+
+type
+  THelpForm = class(TForm)
+  private
+    FDocName:   string;
+    FRawLines:  TStringList;
+    FDisplay:   TDisplayLineList;
+    FTOC:       TTOCList;
+    FTOCCount:  Integer;
+    FContentW:  Integer;
+    FContentX:  Integer;
+    FTOCSel:    Integer;
+    FTOCScroll: Integer;
+    FDispScroll: Integer;
+    FFocusTOC:  Boolean;
+
+    function  ContentRows: Integer;
+    procedure TOCEnsureVisible;
+    procedure ScrollToLine(LineIdx: Integer);
+    procedure Rebuild;
+    procedure DrawTOCRow(ATOCIdx, ARow: Integer);
+    procedure DrawSeparator;
+    procedure DrawContentRow(ADispIdx, ARow: Integer);
+  protected
+    procedure DoPaint; override;
+    function  DoKeyDown(var Key: TKeyEvent): Boolean; override;
+  public
+    constructor Create(const ATitle: string = ''); override;
+    destructor  Destroy; override;
+
+    procedure SetDoc(const ADocName, AContextKey: string);
+  end;
+
+constructor THelpForm.Create(const ATitle: string);
+begin
+  inherited Create(ATitle);
+  FRawLines  := TStringList.Create;
+  FDisplay   := TDisplayLineList.Create(True);
+  FTOCCount  := 0;
+  FTOCSel    := 0;
+  FTOCScroll := 0;
+  FDispScroll := 0;
+  FFocusTOC  := True;
+  SetLength(FTOC, 16);
+end;
+
+destructor THelpForm.Destroy;
+begin
+  FDisplay.Free;
+  FRawLines.Free;
+  inherited;
+end;
+
+procedure THelpForm.SetDoc(const ADocName, AContextKey: string);
+var
+  ResName:   string;
+  ResStream: TResourceStream;
+  I: Integer;
+
+  function FindContextTOC(const AKey: string): Integer;
+  var J: Integer;
+  begin
+    Result := -1;
+    if AKey = '' then Exit;
+    for J := 0 to FTOCCount - 1 do
+      if SameText(FTOC[J].Heading, AKey) then begin Result := J; Exit; end;
+    for J := 0 to FTOCCount - 1 do
+      if Pos(LowerCase(AKey), LowerCase(FTOC[J].Heading)) > 0 then begin Result := J; Exit; end;
+  end;
+
+begin
+  FDocName := ADocName;
+  ResName  := 'HELP_' + UpperCase(ADocName);
+  ResStream := TResourceStream.Create(HInstance, ResName, RT_RCDATA);
+  try
+    FRawLines.LoadFromStream(ResStream);
+  finally
+    ResStream.Free;
+  end;
+  FContentX  := TOC_W + 2;
+  FContentW  := Term.Width - FContentX + 1;
+  if FContentW < 10 then FContentW := 10;
+  Rebuild;
+  if AContextKey <> '' then
+  begin
+    I := FindContextTOC(AContextKey);
+    if I < 0 then I := 0;
+    FTOCSel := I;
+  end;
+  if (FTOCSel >= 0) and (FTOCSel < FTOCCount) then
+  begin
+    ScrollToLine(FTOC[FTOCSel].LineIdx);
+    TOCEnsureVisible;
+  end;
+  Invalidate;
+end;
+
+function THelpForm.ContentRows: Integer;
+begin
+  Result := Term.Height - 4;
+  if Result < 1 then Result := 1;
+end;
+
+procedure THelpForm.TOCEnsureVisible;
+var VR: Integer;
+begin
+  if FTOCCount = 0 then Exit;
+  VR := ContentRows;
+  if FTOCSel < FTOCScroll then FTOCScroll := FTOCSel
+  else if FTOCSel >= FTOCScroll + VR then FTOCScroll := FTOCSel - VR + 1;
+  if FTOCScroll < 0 then FTOCScroll := 0;
+end;
+
+procedure THelpForm.ScrollToLine(LineIdx: Integer);
+begin
+  FDispScroll := LineIdx;
+  if FDispScroll < 0 then FDispScroll := 0;
+  if (FDisplay.Count > 0) and (FDispScroll >= FDisplay.Count) then
+    FDispScroll := FDisplay.Count - 1;
+end;
+
+procedure THelpForm.Rebuild;
+begin
+  FContentX := TOC_W + 2;
+  FContentW := Term.Width - FContentX + 1;
+  if FContentW < 10 then FContentW := 10;
+  FDisplay.Clear;
+  FTOCCount := 0;
+  SetLength(FTOC, 16);
+  BuildDisplayLines(FRawLines, FContentW, FDisplay, FTOC, FTOCCount);
+  if (FTOCSel >= 0) and (FTOCSel < FTOCCount) then
+    ScrollToLine(FTOC[FTOCSel].LineIdx);
+  TOCEnsureVisible;
+end;
+
+procedure THelpForm.DrawTOCRow(ATOCIdx, ARow: Integer);
+var IsSel: Boolean; Txt: string;
+begin
+  Term.GotoXY(1, ARow); Term.ClearToEOL;
+  if (ATOCIdx < 0) or (ATOCIdx >= FTOCCount) then Exit;
+  IsSel := (ATOCIdx = FTOCSel);
+  Txt := FTOC[ATOCIdx].Heading;
+  if Length(Txt) > TOC_W - 3 then Txt := Copy(Txt, 1, TOC_W - 4) + '…';
+  if IsSel then
+  begin
+    if FFocusTOC then begin Term.SetFG(clBlack); Term.SetBG(clCyan); end
+    else Term.SetFG(clCyan);
+    Term.WriteStr(' > ' + Txt);
+  end
+  else
+  begin
+    Term.SetFG(clBrightBlack);
+    Term.WriteStr('   ' + Txt);
+  end;
+  Term.ResetColors;
+end;
+
+procedure THelpForm.DrawSeparator;
+var R: Integer;
+begin
+  for R := 3 to Term.Height - 2 do
+  begin
+    Term.GotoXY(TOC_W + 1, R);
+    Term.SetFG(clBrightBlack);
+    Term.WriteStr('│');
+    Term.ResetColors;
+  end;
+end;
+
+procedure THelpForm.DrawContentRow(ADispIdx, ARow: Integer);
+var DL: TDisplayLine; W: Integer;
+begin
+  Term.GotoXY(FContentX, ARow);
+  W := FContentW;
+  Term.ResetColors;
+  Term.WriteStr(StringOfChar(' ', W));
+  Term.GotoXY(FContentX, ARow);
+  if (ADispIdx < 0) or (ADispIdx >= FDisplay.Count) then Exit;
+  DL := FDisplay[ADispIdx];
+  case DL.Kind of
+    dlkBlank: ;
+    dlkRule: begin Term.SetFG(clBrightBlack); Term.WriteStr(StringOfChar('-', W)); Term.ResetColors; end;
+    dlkH1:   begin Term.SetFG(clBrightCyan);    Term.WriteStr(Copy(DL.Text, 1, W)); Term.ResetColors; end;
+    dlkH2:   begin Term.SetFG(clBrightYellow); Term.SetUnderline(True); Term.WriteStr(Copy(DL.Text, 1, W)); Term.SetUnderline(False); Term.ResetColors; end;
+    dlkH3:   begin Term.SetFG(clBrightGreen);  Term.WriteStr(Copy(DL.Text, 1, W)); Term.ResetColors; end;
+    dlkH4:   begin Term.SetFG(clGreen);         Term.WriteStr(Copy(DL.Text, 1, W)); Term.ResetColors; end;
+    dlkCode: begin Term.SetFG(clBrightBlack);   Term.WriteStr(Copy(DL.Text, 1, W)); Term.ResetColors; end;
+    dlkBullet: begin
+      Term.SetFG(clBrightYellow); Term.WriteStr('• '); Term.ResetColors;
+      RenderInline(Copy(DL.Text, 1, W - 2), W - 2);
+    end;
+    dlkPara: RenderInline(Copy(DL.Text, 1, W), W);
+  end;
+end;
+
+procedure THelpForm.DoPaint;
+var R: Integer;
+begin
+  Term.ClearScreen;
+  DrawHeader('Help: ' + FDocName, 1);
+  DrawSeparator;
+  for R := 0 to ContentRows - 1 do DrawTOCRow(FTOCScroll + R, 3 + R);
+  for R := 0 to ContentRows - 1 do DrawContentRow(FDispScroll + R, 3 + R);
+  DrawRule(Term.Height - 1, 1, Term.Width);
+  Term.GotoXY(1, Term.Height); Term.ClearToEOL;
+  Term.SetFG(clBrightBlack); Term.WriteStr(HELP_FOOT); Term.ResetColors;
+  inherited DoPaint;
+end;
+
+function THelpForm.DoKeyDown(var Key: TKeyEvent): Boolean;
+begin
+  Result := True;
+  case Key.Code of
+    kcEscape, kcF1: Close(1);
+
+    kcTab, kcLeft, kcRight:
+    begin
+      FFocusTOC := not FFocusTOC;
+      Invalidate;
+    end;
+
+    kcUp:
+      if FFocusTOC then
+      begin
+        if FTOCSel > 0 then begin Dec(FTOCSel); TOCEnsureVisible; ScrollToLine(FTOC[FTOCSel].LineIdx); Invalidate; end;
+      end
+      else if FDispScroll > 0 then begin Dec(FDispScroll); Invalidate; end;
+
+    kcDown:
+      if FFocusTOC then
+      begin
+        if FTOCSel < FTOCCount - 1 then begin Inc(FTOCSel); TOCEnsureVisible; ScrollToLine(FTOC[FTOCSel].LineIdx); Invalidate; end;
+      end
+      else if FDispScroll < FDisplay.Count - 1 then begin Inc(FDispScroll); Invalidate; end;
+
+    kcPageUp:
+      if FFocusTOC then
+      begin
+        Dec(FTOCSel, ContentRows); if FTOCSel < 0 then FTOCSel := 0;
+        TOCEnsureVisible; if FTOCCount > 0 then ScrollToLine(FTOC[FTOCSel].LineIdx); Invalidate;
+      end
+      else begin Dec(FDispScroll, ContentRows); if FDispScroll < 0 then FDispScroll := 0; Invalidate; end;
+
+    kcPageDown:
+      if FFocusTOC then
+      begin
+        Inc(FTOCSel, ContentRows);
+        if FTOCSel >= FTOCCount then FTOCSel := FTOCCount - 1;
+        if FTOCSel < 0 then FTOCSel := 0;
+        TOCEnsureVisible; if FTOCCount > 0 then ScrollToLine(FTOC[FTOCSel].LineIdx); Invalidate;
+      end
+      else begin
+        Inc(FDispScroll, ContentRows);
+        if FDispScroll >= FDisplay.Count then FDispScroll := FDisplay.Count - 1;
+        if FDispScroll < 0 then FDispScroll := 0;
+        Invalidate;
+      end;
+
+    kcHome:
+      if FFocusTOC then
+      begin
+        FTOCSel := 0; TOCEnsureVisible;
+        if FTOCCount > 0 then ScrollToLine(FTOC[0].LineIdx); Invalidate;
+      end
+      else begin FDispScroll := 0; Invalidate; end;
+
+    kcEnd:
+      if FFocusTOC then
+      begin
+        if FTOCCount > 0 then FTOCSel := FTOCCount - 1;
+        TOCEnsureVisible; if FTOCCount > 0 then ScrollToLine(FTOC[FTOCSel].LineIdx); Invalidate;
+      end
+      else begin
+        FDispScroll := FDisplay.Count - 1;
+        if FDispScroll < 0 then FDispScroll := 0;
+        Invalidate;
+      end;
+
+    kcEnter:
+      if FFocusTOC and (FTOCCount > 0) then
+      begin
+        ScrollToLine(FTOC[FTOCSel].LineIdx); FFocusTOC := False; Invalidate;
+      end;
+
+    kcChar:
+      if UpCase(Key.Ch) = 'Q' then Close(1)
+      else Result := False;
+
+    else
+      Result := False;
+  end;
+end;
+
+{ ══════════════════════════════════════════════════════════════════════
   Main help-page procedure
   ══════════════════════════════════════════════════════════════════════ }
 
 procedure ShowHelpPage(const ADocName: string; const AContextKey: string);
 var
-  ResName:   string;
-  ResStream: TResourceStream;
-  RawLines:  TStringList;
-  Display:   TDisplayLineList;
-  TOC:       TTOCList;
-  TOCCount:  Integer;
-  ContentW:  Integer;
-  ContentX:  Integer;
-
-  TOCSel:     Integer;
-  TOCScroll:  Integer;
-  DispScroll: Integer;
-  FocusTOC:   Boolean;
-
-  K: TKeyEvent;
-
-  function ContentRows: Integer;
-  begin
-    Result := Term.Height - 4;
-    if Result < 1 then Result := 1;
-  end;
-
-  function TOCRows: Integer;
-  begin
-    Result := ContentRows;
-  end;
-
-  procedure TOCEnsureVisible;
-  var VR: Integer;
-  begin
-    if TOCCount = 0 then Exit;
-    VR := TOCRows;
-    if TOCSel < TOCScroll then
-      TOCScroll := TOCSel
-    else if TOCSel >= TOCScroll + VR then
-      TOCScroll := TOCSel - VR + 1;
-    if TOCScroll < 0 then TOCScroll := 0;
-  end;
-
-  procedure ScrollToLine(LineIdx: Integer);
-  begin
-    DispScroll := LineIdx;
-    if DispScroll < 0 then DispScroll := 0;
-    if (Display.Count > 0) and (DispScroll >= Display.Count) then
-      DispScroll := Display.Count - 1;
-  end;
-
-  procedure DrawTOCRow(ATOCIdx, ARow: Integer);
-  var
-    IsSel: Boolean;
-    Txt:   string;
-  begin
-    Term.GotoXY(1, ARow);
-    Term.ClearToEOL;
-    if (ATOCIdx < 0) or (ATOCIdx >= TOCCount) then Exit;
-    IsSel := (ATOCIdx = TOCSel);
-    Txt := TOC[ATOCIdx].Heading;
-    if Length(Txt) > TOC_W - 3 then
-      Txt := Copy(Txt, 1, TOC_W - 4) + '…';
-    if IsSel then
-    begin
-      if FocusTOC then
-        begin Term.SetFG(clBlack); Term.SetBG(clCyan); end
-      else
-        begin Term.SetFG(clCyan); end;
-      Term.WriteStr(' > ' + Txt);
-    end
-    else
-    begin
-      Term.SetFG(clBrightBlack);
-      Term.WriteStr('   ' + Txt);
-    end;
-    Term.ResetColors;
-  end;
-
-  procedure DrawSeparator;
-  var R: Integer;
-  begin
-    for R := 3 to Term.Height - 2 do
-    begin
-      Term.GotoXY(TOC_W + 1, R);
-      Term.SetFG(clBrightBlack);
-      Term.WriteStr('│');
-      Term.ResetColors;
-    end;
-  end;
-
-  procedure DrawContentRow(ADispIdx, ARow: Integer);
-  var
-    DL: TDisplayLine;
-    W:  Integer;
-  begin
-    Term.GotoXY(ContentX, ARow);
-    W := ContentW;
-    Term.ResetColors;
-    Term.WriteStr(StringOfChar(' ', W));
-    Term.GotoXY(ContentX, ARow);
-
-    if (ADispIdx < 0) or (ADispIdx >= Display.Count) then Exit;
-    DL := Display[ADispIdx];
-
-    case DL.Kind of
-      dlkBlank: ;
-      dlkRule: begin
-        Term.SetFG(clBrightBlack);
-        Term.WriteStr(StringOfChar('-', W));
-        Term.ResetColors;
-      end;
-      dlkH1: begin
-        Term.SetFG(clBrightCyan);
-        Term.WriteStr(Copy(DL.Text, 1, W));
-        Term.ResetColors;
-      end;
-      dlkH2: begin
-        Term.SetFG(clBrightYellow);
-        Term.SetUnderline(True);
-        Term.WriteStr(Copy(DL.Text, 1, W));
-        Term.SetUnderline(False);
-        Term.ResetColors;
-      end;
-      dlkH3: begin
-        Term.SetFG(clBrightGreen);
-        Term.WriteStr(Copy(DL.Text, 1, W));
-        Term.ResetColors;
-      end;
-      dlkH4: begin
-        Term.SetFG(clGreen);
-        Term.WriteStr(Copy(DL.Text, 1, W));
-        Term.ResetColors;
-      end;
-      dlkCode: begin
-        Term.SetFG(clBrightBlack);
-        Term.WriteStr(Copy(DL.Text, 1, W));
-        Term.ResetColors;
-      end;
-      dlkBullet: begin
-        Term.SetFG(clBrightYellow);
-        Term.WriteStr('• ');
-        Term.ResetColors;
-        RenderInline(Copy(DL.Text, 1, W - 2), W - 2);
-      end;
-      dlkPara:
-        RenderInline(Copy(DL.Text, 1, W), W);
-    end;
-  end;
-
-  procedure DrawAll;
-  var
-    R: Integer;
-  begin
-    Term.ClearScreen;
-    DrawHeader('Help: ' + ADocName, 1);
-    DrawSeparator;
-
-    for R := 0 to TOCRows - 1 do
-      DrawTOCRow(TOCScroll + R, 3 + R);
-
-    for R := 0 to ContentRows - 1 do
-      DrawContentRow(DispScroll + R, 3 + R);
-
-    DrawRule(Term.Height - 1, 1, Term.Width);
-    Term.GotoXY(1, Term.Height);
-    Term.ClearToEOL;
-    Term.SetFG(clBrightBlack);
-    Term.WriteStr(HELP_FOOT);
-    Term.ResetColors;
-
-    Term.FlushOutput;
-  end;
-
-  procedure Rebuild;
-  begin
-    ContentX := TOC_W + 2;
-    ContentW := Term.Width - ContentX + 1;
-    if ContentW < 10 then ContentW := 10;
-    Display.Clear;
-    TOCCount := 0;
-    SetLength(TOC, 16);
-    BuildDisplayLines(RawLines, ContentW, Display, TOC, TOCCount);
-    if (TOCSel >= 0) and (TOCSel < TOCCount) then
-      ScrollToLine(TOC[TOCSel].LineIdx);
-    TOCEnsureVisible;
-  end;
-
-  function FindContextTOC(const AKey: string): Integer;
-  var I: Integer;
-  begin
-    Result := -1;
-    if AKey = '' then Exit;
-    for I := 0 to TOCCount - 1 do
-      if SameText(TOC[I].Heading, AKey) then
-        begin Result := I; Exit; end;
-    for I := 0 to TOCCount - 1 do
-      if Pos(LowerCase(AKey), LowerCase(TOC[I].Heading)) > 0 then
-        begin Result := I; Exit; end;
-  end;
-
+  Form: THelpForm;
 begin
-  RawLines := TStringList.Create;
-  Display  := TDisplayLineList.Create(True);
+  if ADocName = '' then Exit;
+  Form := THelpForm.Create;
   try
-    ResName := 'HELP_' + UpperCase(ADocName);
-    ResStream := TResourceStream.Create(HInstance, ResName, RT_RCDATA);
-    try
-      RawLines.LoadFromStream(ResStream);
-    finally
-      ResStream.Free;
-    end;
-
-    TOCCount   := 0;
-    TOCSel     := 0;
-    TOCScroll  := 0;
-    DispScroll := 0;
-    FocusTOC   := True;
-    SetLength(TOC, 16);
-    ContentX   := TOC_W + 2;
-    ContentW   := Term.Width - ContentX + 1;
-
-    Rebuild;
-
-    if AContextKey <> '' then
-    begin
-      TOCSel := FindContextTOC(AContextKey);
-      if TOCSel < 0 then TOCSel := 0;
-    end;
-    if (TOCSel >= 0) and (TOCSel < TOCCount) then
-    begin
-      ScrollToLine(TOC[TOCSel].LineIdx);
-      TOCEnsureVisible;
-    end;
-
-    DrawAll;
-
-    repeat
-      K := Term.ReadKey;
-
-      if Term.HasResized then
-      begin
-        Rebuild;
-        DrawAll;
-        Continue;
-      end;
-
-      case K.Code of
-        kcEscape, kcF1:
-          Exit;
-
-        kcTab, kcLeft, kcRight:
-        begin
-          FocusTOC := not FocusTOC;
-          DrawAll;
-        end;
-
-        kcUp:
-          if FocusTOC then
-          begin
-            if TOCSel > 0 then
-            begin
-              Dec(TOCSel);
-              TOCEnsureVisible;
-              ScrollToLine(TOC[TOCSel].LineIdx);
-              DrawAll;
-            end;
-          end
-          else
-          begin
-            if DispScroll > 0 then begin Dec(DispScroll); DrawAll; end;
-          end;
-
-        kcDown:
-          if FocusTOC then
-          begin
-            if TOCSel < TOCCount - 1 then
-            begin
-              Inc(TOCSel);
-              TOCEnsureVisible;
-              ScrollToLine(TOC[TOCSel].LineIdx);
-              DrawAll;
-            end;
-          end
-          else
-          begin
-            if DispScroll < Display.Count - 1 then begin Inc(DispScroll); DrawAll; end;
-          end;
-
-        kcPageUp:
-          if FocusTOC then
-          begin
-            Dec(TOCSel, TOCRows);
-            if TOCSel < 0 then TOCSel := 0;
-            TOCEnsureVisible;
-            if TOCCount > 0 then ScrollToLine(TOC[TOCSel].LineIdx);
-            DrawAll;
-          end
-          else
-          begin
-            Dec(DispScroll, ContentRows);
-            if DispScroll < 0 then DispScroll := 0;
-            DrawAll;
-          end;
-
-        kcPageDown:
-          if FocusTOC then
-          begin
-            Inc(TOCSel, TOCRows);
-            if TOCSel >= TOCCount then TOCSel := TOCCount - 1;
-            if TOCSel < 0 then TOCSel := 0;
-            TOCEnsureVisible;
-            if TOCCount > 0 then ScrollToLine(TOC[TOCSel].LineIdx);
-            DrawAll;
-          end
-          else
-          begin
-            Inc(DispScroll, ContentRows);
-            if DispScroll >= Display.Count then DispScroll := Display.Count - 1;
-            if DispScroll < 0 then DispScroll := 0;
-            DrawAll;
-          end;
-
-        kcHome:
-          if FocusTOC then
-          begin
-            TOCSel := 0;
-            TOCEnsureVisible;
-            if TOCCount > 0 then ScrollToLine(TOC[0].LineIdx);
-            DrawAll;
-          end
-          else
-          begin
-            DispScroll := 0;
-            DrawAll;
-          end;
-
-        kcEnd:
-          if FocusTOC then
-          begin
-            if TOCCount > 0 then TOCSel := TOCCount - 1;
-            TOCEnsureVisible;
-            if TOCCount > 0 then ScrollToLine(TOC[TOCSel].LineIdx);
-            DrawAll;
-          end
-          else
-          begin
-            DispScroll := Display.Count - 1;
-            if DispScroll < 0 then DispScroll := 0;
-            DrawAll;
-          end;
-
-        kcEnter:
-          if FocusTOC and (TOCCount > 0) then
-          begin
-            ScrollToLine(TOC[TOCSel].LineIdx);
-            FocusTOC := False;
-            DrawAll;
-          end;
-
-        kcChar:
-          if UpCase(K.Ch) = 'Q' then Exit;
-      end;
-    until False;
-
+    Form.SetDoc(ADocName, AContextKey);
+    Application.ShowModal(Form);
   finally
-    Display.Free;
-    RawLines.Free;
+    Form.Free;
   end;
 end;
 
