@@ -15,7 +15,7 @@ interface
 
 uses
   Classes, SysUtils,
-  TermUI.Terminal, TermUI.Menu,
+  TermUI.Terminal, TermUI.Menu, TermUI.Application,
   PasbuildEditor.ProjectModel,
   PasbuildEditor.DependencyResolver;
 
@@ -39,6 +39,15 @@ type
     procedure SaveProject;
     function  PromptSaveOnQuit: Boolean;
   end;
+
+{ Application-level signal flags.
+  Declared here (rather than GlobalKeys) to avoid a circular dependency:
+  GlobalKeys already imports UIContext for TUIContext/CheckGlobalKeys. }
+var
+  GQuitRequested:  Boolean;
+  GSaveRequested:  Boolean;
+  GCtrlCRequested: Boolean;
+  GCtrlXRequested: Boolean;
 
 implementation
 
@@ -74,7 +83,7 @@ begin
     Term.WriteStr(' Saved: ' + Project.FileName);
     Term.ResetColors;
     Term.FlushOutput;
-    if GQuitRequested then
+    if Application.Terminated then
       Sleep(500)
     else
       Term.ReadKey;
@@ -125,6 +134,7 @@ begin
       GQuitRequested  := False;
       GCtrlCRequested := False;
       GCtrlXRequested := False;
+      Application.Resume;
       Result := False;
       Exit;
     end;
@@ -132,6 +142,7 @@ begin
     begin
       Term.HideCursor;
       GQuitRequested := True;
+      Application.Terminate;
       Exit;
     end;
   until False;

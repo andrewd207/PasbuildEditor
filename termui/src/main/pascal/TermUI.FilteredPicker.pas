@@ -376,11 +376,8 @@ begin
         RefreshAll;
       end;
 
-    else begin
-      if Assigned(GOnUnhandledKey) then
-        GOnUnhandledKey(Self, Key);
-      if GQuitRequested then Close(1);
-    end;
+    else
+      Result := False;  // unhandled — bubbles to Application.OnKeyDown
   end;
 end;
 

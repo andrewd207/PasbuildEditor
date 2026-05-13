@@ -26,7 +26,8 @@ procedure RunStringListPage(Ctx: TUIContext; const ATitle: string;
 implementation
 
 uses
-  PasbuildEditor.GlobalKeys;
+  PasbuildEditor.GlobalKeys,
+  TermUI.Application;
 
 procedure RunStringListPage(Ctx: TUIContext; const ATitle: string;
   AList: TStringList);
@@ -93,7 +94,7 @@ begin
     finally
       SMenu.Free;
     end;
-  until GQuitRequested or GCtrlCRequested or GCtrlXRequested;
+  until Application.Terminated;
 end;
 
 end.

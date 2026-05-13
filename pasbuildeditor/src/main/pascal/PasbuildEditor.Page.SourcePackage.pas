@@ -26,7 +26,8 @@ implementation
 uses
   TermUI.Terminal,
   TermUI.PathPicker,
-  PasbuildEditor.GlobalKeys;
+  PasbuildEditor.GlobalKeys,
+  TermUI.Application;
 
 procedure RunSourcePackagePage(Ctx: TUIContext; P: TProjectCommon);
 var
@@ -102,7 +103,7 @@ begin
     finally
       Menu.Free;
     end;
-  until GQuitRequested or GCtrlCRequested or GCtrlXRequested;
+  until Application.Terminated;
 end;
 
 end.

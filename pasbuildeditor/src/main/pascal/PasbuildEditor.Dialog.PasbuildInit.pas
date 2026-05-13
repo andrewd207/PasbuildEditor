@@ -28,7 +28,8 @@ implementation
 uses
   Process,
   TermUI.Terminal, TermUI.Menu,
-  PasbuildEditor.ProjectModel;
+  PasbuildEditor.ProjectModel,
+  TermUI.Application;
 
 { Parse a line from pasbuild init stdout into a prompt structure.
   Returns True if the line looks like a question prompt.
@@ -198,7 +199,7 @@ begin
           else if Default_ <> '' then
             PickMenu.SelectByLabel(Default_);
           PickSel := PickMenu.Run;
-          if GQuitRequested or GCtrlCRequested or GCtrlXRequested or (PickSel = nil) then
+          if Application.Terminated or (PickSel = nil) then
           begin
             Proc.Terminate(1);
             Exit;

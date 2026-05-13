@@ -24,7 +24,8 @@ implementation
 uses
   Process,
   TermUI.Terminal, TermUI.Menu,
-  PasbuildEditor.UI.Colors;
+  PasbuildEditor.UI.Colors,
+  TermUI.Application;
 
 procedure RunBuildRunnerPage(Ctx: TUIContext);
 const
@@ -441,7 +442,7 @@ begin
         GoalSel := GoalMenu.Run;
         GCtrlCRequested := False;
         GCtrlXRequested := False;
-        if GQuitRequested or (GoalSel = nil) then Exit;
+        if Application.Terminated or (GoalSel = nil) then Exit;
         LastGoalLabel := GoalSel.Label_;
         if GoalSel.Value <> '' then
           Goal := GoalSel.Value

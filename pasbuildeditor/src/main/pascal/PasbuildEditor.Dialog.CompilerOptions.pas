@@ -30,7 +30,8 @@ uses
   PasbuildEditor.Compiler,
   PasbuildEditor.Compiler.FPC,
   PasbuildEditor.ProjectModel,
-  TermUI.FilteredPicker;
+  TermUI.FilteredPicker,
+  TermUI.Application;
 
 function ResolveCompilerClass(Ctx: TUIContext): TCompilerClass;
 var
@@ -131,7 +132,7 @@ begin
     finally
       SMenu.Free;
     end;
-  until GQuitRequested or GCtrlCRequested or GCtrlXRequested;
+  until Application.Terminated;
 end;
 
 end.

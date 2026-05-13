@@ -34,7 +34,9 @@ function RunPackageSearch(AResolver: TDependencyResolver;
 implementation
 
 uses
-  PasbuildEditor.UI.Colors;
+  PasbuildEditor.UI.Colors,
+  PasbuildEditor.UIContext,
+  TermUI.Application;
 
 { ══════════════════════════════════════════════════════════════════════
   Semver helpers
@@ -430,9 +432,9 @@ begin
       case K.Code of
         kcEscape: Break;
 
-        kcCtrlC: begin GCtrlCRequested := True; Break; end;
+        kcCtrlC: begin GCtrlCRequested := True; GQuitRequested := True; Application.Terminate; Break; end;
         kcCtrlS: begin GSaveRequested  := True; Break; end;
-        kcCtrlX: begin GCtrlXRequested := True; Break; end;
+        kcCtrlX: begin GCtrlXRequested := True; GQuitRequested := True; Application.Terminate; Break; end;
 
         kcUp: begin
           if Sel > 0 then Dec(Sel);

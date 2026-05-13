@@ -26,7 +26,8 @@ implementation
 uses
   TermUI.Terminal,
   PasbuildEditor.GlobalKeys,
-  PasbuildEditor.UI.Utils;
+  PasbuildEditor.UI.Utils,
+  TermUI.Application;
 
 procedure RunModuleDepsPage(Ctx: TUIContext; P: TProjectCommon);
 var
@@ -143,7 +144,7 @@ begin
     finally
       Menu.Free;
     end;
-  until GQuitRequested or GCtrlCRequested or GCtrlXRequested;
+  until Application.Terminated;
 end;
 
 end.

@@ -26,7 +26,8 @@ implementation
 uses
   StrUtils,
   TermUI.Terminal,
-  PasbuildEditor.GlobalKeys;
+  PasbuildEditor.GlobalKeys,
+  TermUI.Application;
 
 procedure RunBootstrapExcludePage(Ctx: TUIContext; P: TProjectCommon);
 var
@@ -141,7 +142,7 @@ begin
     finally
       Menu.Free;
     end;
-  until GQuitRequested or GCtrlCRequested or GCtrlXRequested;
+  until Application.Terminated;
 end;
 
 end.

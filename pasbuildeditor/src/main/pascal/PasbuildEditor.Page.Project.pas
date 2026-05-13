@@ -39,7 +39,8 @@ uses
   PasbuildEditor.GlobalKeys,
   PasbuildEditor.Dialog.About,
   PasbuildEditor.Dialog.PasbuildInit,
-  PasbuildEditor.Page.ShowHelp;
+  PasbuildEditor.Page.ShowHelp,
+  TermUI.Application;
 
 { ── POM page helpers ─────────────────────────────────────────────── }
 
@@ -362,14 +363,14 @@ begin
             Term.ResetColors;
             Term.ReadKey;
           end;
-          if not GQuitRequested and not GCtrlXRequested then
+          if not Application.Terminated then
             GCtrlCRequested := False;
         end;
       end;
     finally
       Menu.Free;
     end;
-  until GQuitRequested or GCtrlCRequested or GCtrlXRequested;
+  until Application.Terminated;
 end;
 
 { ── Project page ─────────────────────────────────────────────────── }
@@ -558,7 +559,7 @@ begin
     finally
       Menu.Free;
     end;
-  until GQuitRequested or GCtrlCRequested or GCtrlXRequested;
+  until Application.Terminated;
 end;
 
 { ── UI entry loop ────────────────────────────────────────────────── }
@@ -568,6 +569,7 @@ begin
   GQuitRequested  := False;
   GCtrlCRequested := False;
   GCtrlXRequested := False;
+  Application.Resume;
   RunProjectPage(Ctx);
   if GCtrlXRequested then
   begin
@@ -583,6 +585,7 @@ begin
     begin
       GQuitRequested  := False;
       GCtrlCRequested := False;
+      Application.Resume;
       RunProjectUI(Ctx);
     end;
   end;

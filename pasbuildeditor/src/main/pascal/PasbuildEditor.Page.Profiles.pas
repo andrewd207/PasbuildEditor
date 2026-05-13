@@ -30,7 +30,8 @@ uses
   TermUI.Terminal,
   PasbuildEditor.GlobalKeys,
   PasbuildEditor.Dialog.CompilerOptions,
-  PasbuildEditor.Page.StringList;
+  PasbuildEditor.Page.StringList,
+  TermUI.Application;
 
 procedure RunProfileEditPage(Ctx: TUIContext; P: TProjectBase; AProfile: TProfile);
 var
@@ -152,7 +153,7 @@ begin
     finally
       Menu.Free;
     end;
-  until GQuitRequested or GCtrlCRequested or GCtrlXRequested;
+  until Application.Terminated;
 end;
 
 procedure RunProfilesPage(Ctx: TUIContext; P: TProjectBase);
@@ -207,7 +208,7 @@ begin
             TplMenu.Add(TMenuItem.Create(Templates[I].Name, nil,
               Templates[I].Description));
           Sel := TplMenu.Run;
-          if (not GQuitRequested) and (not GCtrlCRequested) and Assigned(Sel) then
+          if (not Application.Terminated) and Assigned(Sel) then
           begin
             NewProf := nil;
             for I := 0 to P.Profiles.Count - 1 do
@@ -282,7 +283,7 @@ begin
     finally
       Menu.Free;
     end;
-  until GQuitRequested or GCtrlCRequested or GCtrlXRequested;
+  until Application.Terminated;
 end;
 
 end.

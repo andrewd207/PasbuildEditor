@@ -40,10 +40,35 @@ implementation
 uses
   TermUI.Terminal,
   TermUI.Menu,
+  TermUI.Application,
   PasbuildEditor.Consts,
   PasbuildEditor.GlobalKeys,
   PasbuildEditor.UIContext,
   PasbuildEditor.Page.Project;
+
+type
+  { One-shot idle driver: fires RunProjectUI on the first Application idle tick,
+    then terminates the application loop. Owned and freed by RunUI. }
+  TAppDriver = class
+  private
+    FCtx: TUIContext;
+  public
+    constructor Create(ACtx: TUIContext);
+    procedure OnIdle(Sender: TObject);
+  end;
+
+constructor TAppDriver.Create(ACtx: TUIContext);
+begin
+  inherited Create;
+  FCtx := ACtx;
+end;
+
+procedure TAppDriver.OnIdle(Sender: TObject);
+begin
+  Application.OnIdle := nil;
+  RunProjectUI(FCtx);
+  Application.Terminate;
+end;
 
 { Delegate semver helpers to Dialog.PackageSearch }
 
@@ -68,7 +93,8 @@ end;
 
 procedure RunUI(AProject: TProjectBase; AParentPOM: TProjectPOM = nil);
 var
-  Ctx: TUIContext;
+  Ctx:    TUIContext;
+  Driver: TAppDriver;
 begin
   AppTitle   := APP_TITLE;
   AppVersion := APP_VERSION;
@@ -80,7 +106,13 @@ begin
     Ctx := TUIContext.Create(AProject, AProject.Name, DefaultResolver,
                              True, nil, AParentPOM);
     try
-      RunProjectUI(Ctx);
+      Driver := TAppDriver.Create(Ctx);
+      try
+        Application.OnIdle := @Driver.OnIdle;
+        Application.Run;
+      finally
+        Driver.Free;
+      end;
     finally
       Ctx.Free;
     end;

@@ -26,7 +26,9 @@ function RunConditionPicker(AProject: TProjectBase; AParentPOM: TProjectPOM;
 implementation
 
 uses
-  PasbuildEditor.UI.Colors;
+  PasbuildEditor.UI.Colors,
+  PasbuildEditor.UIContext,
+  TermUI.Application;
 
 function RunConditionPicker(AProject: TProjectBase; AParentPOM: TProjectPOM;
   var ACondition: string): Boolean;
@@ -178,9 +180,9 @@ begin
       case K.Code of
         kcEscape: Break;
 
-        kcCtrlC: begin GCtrlCRequested := True; Break; end;
+        kcCtrlC: begin GCtrlCRequested := True; GQuitRequested := True; Application.Terminate; Break; end;
         kcCtrlS: begin GSaveRequested  := True; Break; end;
-        kcCtrlX: begin GCtrlXRequested := True; Break; end;
+        kcCtrlX: begin GCtrlXRequested := True; GQuitRequested := True; Application.Terminate; Break; end;
 
         kcUp: begin
           if FilterFocused then

@@ -14,7 +14,7 @@ unit PasbuildEditor.GlobalKeys;
 interface
 
 uses
-  TermUI.Terminal, TermUI.Control, TermUI.Menu,
+  TermUI.Terminal, TermUI.Control, TermUI.Menu, TermUI.Application,
   PasbuildEditor.UIContext;
 
 type
@@ -33,7 +33,7 @@ type
 function CheckGlobalKeys(Menu: TMenu; Ctx: TUIContext; Sel: TMenuItem;
   const AHelpDoc: string = ''): TGlobalKeyResult;
 
-{ Install the application key handler into GOnUnhandledKey.
+{ Install the application key handler into Application.OnKeyDown.
   Call once during startup (before entering the UI loop).
   Maps Ctrl+C → quit, Ctrl+S → save, Ctrl+X → save+quit. }
 procedure InstallGlobalKeyHandler;
@@ -56,9 +56,22 @@ function TGlobalKeyRouter.HandleKey(Sender: TObject; var Key: TKeyEvent): Boolea
 begin
   Result := False;
   case Key.Code of
-    kcCtrlC: begin GCtrlCRequested := True; GQuitRequested := True; Result := True; end;
-    kcCtrlS: begin GSaveRequested  := True;                         Result := True; end;
-    kcCtrlX: begin GCtrlXRequested := True; GQuitRequested := True; Result := True; end;
+    kcCtrlC: begin
+      GCtrlCRequested := True;
+      GQuitRequested  := True;
+      Application.Terminate;
+      Result := True;
+    end;
+    kcCtrlS: begin
+      GSaveRequested := True;
+      Result := True;
+    end;
+    kcCtrlX: begin
+      GCtrlXRequested := True;
+      GQuitRequested  := True;
+      Application.Terminate;
+      Result := True;
+    end;
   end;
 end;
 
@@ -69,7 +82,7 @@ procedure InstallGlobalKeyHandler;
 begin
   if GKeyRouter = nil then
     GKeyRouter := TGlobalKeyRouter.Create;
-  GOnUnhandledKey := @GKeyRouter.HandleKey;
+  Application.OnKeyDown := @GKeyRouter.HandleKey;
 end;
 
 { ── CheckGlobalKeys ── }
@@ -96,7 +109,7 @@ begin
     GSaveRequested := False;
     Exit(gkContinue);
   end;
-  if GQuitRequested or GCtrlCRequested or GCtrlXRequested then
+  if Application.Terminated then
     Exit(gkBreak);
   Result := gkUnhandled;
 end;

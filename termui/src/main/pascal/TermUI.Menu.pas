@@ -117,18 +117,6 @@ var
   AppTitle:   string = 'TermUI';
   AppVersion: string = '';
 
-var
-  GQuitRequested:  Boolean;
-  GSaveRequested:  Boolean;
-  GCtrlCRequested: Boolean;
-  GCtrlXRequested: Boolean;
-
-  { Install an application-level key handler here.
-    The termui widgets call this for any key they do not consume themselves.
-    Return True to mark the key handled.  The handler may set GQuitRequested
-    (or any other flag) to signal loops to exit. }
-  GOnUnhandledKey: TKeyDownEvent;
-
 implementation
 
 { ══════════════════════════════════════════════════════════════════════
@@ -696,11 +684,8 @@ begin
     kcUp, kcDown, kcPageUp, kcPageDown, kcHome, kcEnd:
       HandleKey(Key);
 
-    else begin
-      if Assigned(GOnUnhandledKey) then
-        GOnUnhandledKey(Self, Key);
-      if GQuitRequested then Close(1);
-    end;
+    else
+      Result := False;  // unhandled — bubbles to Application.OnKeyDown
   end;
 end;
 
@@ -866,11 +851,5 @@ begin
   until False;
   Term.HideCursor;
 end;
-
-initialization
-  GQuitRequested  := False;
-  GSaveRequested  := False;
-  GCtrlCRequested := False;
-  GCtrlXRequested := False;
 
 end.

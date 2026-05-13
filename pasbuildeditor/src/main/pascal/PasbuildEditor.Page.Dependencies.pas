@@ -35,7 +35,8 @@ uses
   PasbuildEditor.DependencyResolver,
   PasbuildEditor.Strings,
   PasbuildEditor.UI.Utils,
-  PasbuildEditor.Dialog.PackageSearch;
+  PasbuildEditor.Dialog.PackageSearch,
+  TermUI.Application;
 
 function RunDepDetailPage(Ctx: TUIContext; P: TProjectCommon;
   Dep: TDependency): Boolean;
@@ -100,7 +101,7 @@ begin
 
       SubSel := SubMenu.Run;
       if GSaveRequested then begin Ctx.SaveProject; GSaveRequested := False; end;
-      if GQuitRequested or GCtrlCRequested or GCtrlXRequested or (SubSel = nil) then Exit;
+      if Application.Terminated or (SubSel = nil) then Exit;
 
       if SubSel.Label_ = 'Remove dependency' then
       begin
@@ -226,7 +227,7 @@ begin
     finally
       Menu.Free;
     end;
-  until GQuitRequested or GCtrlCRequested or GCtrlXRequested;
+  until Application.Terminated;
 end;
 
 end.

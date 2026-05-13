@@ -52,6 +52,8 @@ type
     procedure ProcessMessages;
 
     procedure Terminate;
+    { Clear the terminated flag — call to resume after a cancelled quit. }
+    procedure Resume;
 
     { Push/pop the active form. The top of the stack is the active form. }
     procedure PushForm(AForm: TForm);
@@ -160,8 +162,12 @@ begin
   HadKey := Term.ReadKeyTimeout(Key, 16);
   if HadKey then
     DispatchKey(Key)
-  else if Assigned(FOnIdle) then
-    FOnIdle(Self);
+  else
+  begin
+    CheckSynchronize;
+    if Assigned(FOnIdle) then
+      FOnIdle(Self);
+  end;
 end;
 
 procedure TApplication.Run;
@@ -176,7 +182,7 @@ begin
   AForm.ModalResult := 0;
   PushForm(AForm);
   try
-    while AForm.ModalResult = 0 do
+    while (AForm.ModalResult = 0) and not FTerminated do
       ProcessMessages;
   finally
     PopForm;
@@ -187,6 +193,11 @@ end;
 procedure TApplication.Terminate;
 begin
   FTerminated := True;
+end;
+
+procedure TApplication.Resume;
+begin
+  FTerminated := False;
 end;
 
 initialization

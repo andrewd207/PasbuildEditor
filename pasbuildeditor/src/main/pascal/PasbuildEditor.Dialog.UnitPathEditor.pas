@@ -35,7 +35,9 @@ implementation
 uses
   StrUtils,
   TermUI.PathPicker,
-  PasbuildEditor.Dialog.ConditionPicker;
+  PasbuildEditor.Dialog.ConditionPicker,
+  PasbuildEditor.UIContext,
+  TermUI.Application;
 
 function RunUnitPathEditor(AProject: TProjectBase; AParentPOM: TProjectPOM;
   const ABreadcrumb, ABaseDir: string;
@@ -70,7 +72,7 @@ begin
 
       if LastLabel <> '' then Menu.SelectByLabel(LastLabel);
       Sel := Menu.Run;
-      if GQuitRequested or GCtrlCRequested or GCtrlXRequested or GSaveRequested then Break;
+      if Application.Terminated or GSaveRequested then Break;
       if Sel = nil then Break;
       LastLabel := Sel.Label_;
 
@@ -127,7 +129,7 @@ begin
     finally
       Menu.Free;
     end;
-  until GQuitRequested or GCtrlCRequested or GCtrlXRequested;
+  until Application.Terminated;
 end;
 
 end.

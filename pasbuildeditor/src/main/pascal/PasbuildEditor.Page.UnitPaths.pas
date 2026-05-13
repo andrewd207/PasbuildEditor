@@ -30,7 +30,8 @@ uses
   TermUI.Terminal,
   PasbuildEditor.GlobalKeys,
   PasbuildEditor.Strings,
-  PasbuildEditor.Dialog.UnitPathEditor;
+  PasbuildEditor.Dialog.UnitPathEditor,
+  TermUI.Application;
 
 procedure RunUnitPathsPage(Ctx: TUIContext; P: TProjectCommon;
   const ATitle: string; AList: TConditionalPathList; AKind: string);
@@ -193,7 +194,7 @@ begin
     finally
       Menu.Free;
     end;
-  until GQuitRequested or GCtrlCRequested or GCtrlXRequested;
+  until Application.Terminated;
 end;
 
 end.

@@ -38,7 +38,8 @@ uses
   PasbuildEditor.Page.BootstrapExclude,
   PasbuildEditor.Page.SourcePackage,
   PasbuildEditor.Page.UnitPaths,
-  PasbuildEditor.Page.ShowHelp;
+  PasbuildEditor.Page.ShowHelp,
+  TermUI.Application;
 
 procedure RunCommonPage(Ctx: TUIContext; P: TProjectCommon);
 var
@@ -180,7 +181,7 @@ begin
     finally
       Menu.Free;
     end;
-  until GQuitRequested or GCtrlCRequested or GCtrlXRequested;
+  until Application.Terminated;
 end;
 
 end.
