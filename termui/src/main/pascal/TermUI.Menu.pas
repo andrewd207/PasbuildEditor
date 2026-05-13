@@ -14,7 +14,7 @@ unit TermUI.Menu;
 interface
 
 uses
-  Classes, SysUtils, StrUtils, fgl, TermUI.Terminal;
+  Classes, SysUtils, StrUtils, fgl, TermUI.Terminal, TermUI.Control;
 
 type
   TMenuItemKind = (mikNormal, mikHeader, mikSeparator);
@@ -115,6 +115,12 @@ var
   GSaveRequested:  Boolean;
   GCtrlCRequested: Boolean;
   GCtrlXRequested: Boolean;
+
+  { Install an application-level key handler here.
+    The termui widgets call this for any key they do not consume themselves.
+    Return True to mark the key handled.  The handler may set GQuitRequested
+    (or any other flag) to signal loops to exit. }
+  GOnUnhandledKey: TKeyDownEvent;
 
 implementation
 
@@ -679,21 +685,6 @@ begin
         Exit;
       end;
 
-      kcCtrlC: begin
-        GCtrlCRequested := True;
-        Exit;
-      end;
-
-      kcCtrlS: begin
-        GSaveRequested := True;
-        Exit;
-      end;
-
-      kcCtrlX: begin
-        GCtrlXRequested := True;
-        Exit;
-      end;
-
       kcChar: begin
         { Check item hotkeys first }
         for Sel in FItems do
@@ -710,7 +701,16 @@ begin
         Exit;
       end;
 
-      else HandleKey(K);  // Up/Down/PgUp/PgDn
+      else begin
+        if K.Code in [kcUp, kcDown, kcPageUp, kcPageDown, kcHome, kcEnd] then
+          HandleKey(K)
+        else
+        begin
+          if Assigned(GOnUnhandledKey) then
+            GOnUnhandledKey(Self, K);
+          if GQuitRequested then Exit;
+        end;
+      end;
     end;
   until False;
 end;

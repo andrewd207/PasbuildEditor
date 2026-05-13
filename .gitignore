@@ -37,3 +37,7 @@ Thumbs.db
 .vscode/
 .idea/
 .ide/
+
+# Backup files
+*.bak
+/backup/

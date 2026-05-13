@@ -41,6 +41,7 @@ uses
   TermUI.Terminal,
   TermUI.Menu,
   PasbuildEditor.Consts,
+  PasbuildEditor.GlobalKeys,
   PasbuildEditor.UIContext,
   PasbuildEditor.Page.Project;
 
@@ -71,6 +72,7 @@ var
 begin
   AppTitle   := APP_TITLE;
   AppVersion := APP_VERSION;
+  InstallGlobalKeyHandler;
   Term.EnableRawMode;
   Term.HideCursor;
   Term.EnterAltScreen;

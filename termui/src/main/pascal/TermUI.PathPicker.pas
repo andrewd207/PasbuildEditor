@@ -13,7 +13,7 @@ unit TermUI.PathPicker;
 
 interface
 
-uses Classes, SysUtils, TermUI.Terminal, TermUI.Menu;
+uses Classes, SysUtils, TermUI.Terminal, TermUI.Control, TermUI.Menu;
 
 { Full-screen recursive path picker. ABaseDir is the root to browse.
   ADirsOnly=True restricts selection to directories.
@@ -178,9 +178,6 @@ begin
 
       case K.Code of
         kcEscape: Break;
-        kcCtrlC: begin GCtrlCRequested := True; Break; end;
-        kcCtrlS: begin GSaveRequested  := True; Break; end;
-        kcCtrlX: begin GCtrlXRequested := True; Break; end;
 
         kcUp: begin
           if FilterFocused then
@@ -269,6 +266,12 @@ begin
           Sel := 0;
           FilterFocused := True;
           NeedRefresh := True;
+        end;
+
+        else begin
+          if Assigned(GOnUnhandledKey) then
+            GOnUnhandledKey(nil, K);
+          if GQuitRequested then Break;
         end;
       end;
 

@@ -14,7 +14,7 @@ unit PasbuildEditor.GlobalKeys;
 interface
 
 uses
-  TermUI.Menu,
+  TermUI.Terminal, TermUI.Control, TermUI.Menu,
   PasbuildEditor.UIContext;
 
 type
@@ -33,11 +33,46 @@ type
 function CheckGlobalKeys(Menu: TMenu; Ctx: TUIContext; Sel: TMenuItem;
   const AHelpDoc: string = ''): TGlobalKeyResult;
 
+{ Install the application key handler into GOnUnhandledKey.
+  Call once during startup (before entering the UI loop).
+  Maps Ctrl+C → quit, Ctrl+S → save, Ctrl+X → save+quit. }
+procedure InstallGlobalKeyHandler;
+
 implementation
 
 uses
+  SysUtils,
   PasbuildEditor.Page.ShowHelp,
   PasbuildEditor.Dialog.About;
+
+{ ── Application key router ── }
+
+type
+  TGlobalKeyRouter = class
+    function HandleKey(Sender: TObject; var Key: TKeyEvent): Boolean;
+  end;
+
+function TGlobalKeyRouter.HandleKey(Sender: TObject; var Key: TKeyEvent): Boolean;
+begin
+  Result := False;
+  case Key.Code of
+    kcCtrlC: begin GCtrlCRequested := True; GQuitRequested := True; Result := True; end;
+    kcCtrlS: begin GSaveRequested  := True;                         Result := True; end;
+    kcCtrlX: begin GCtrlXRequested := True; GQuitRequested := True; Result := True; end;
+  end;
+end;
+
+var
+  GKeyRouter: TGlobalKeyRouter;
+
+procedure InstallGlobalKeyHandler;
+begin
+  if GKeyRouter = nil then
+    GKeyRouter := TGlobalKeyRouter.Create;
+  GOnUnhandledKey := @GKeyRouter.HandleKey;
+end;
+
+{ ── CheckGlobalKeys ── }
 
 function CheckGlobalKeys(Menu: TMenu; Ctx: TUIContext; Sel: TMenuItem;
   const AHelpDoc: string): TGlobalKeyResult;
@@ -65,5 +100,8 @@ begin
     Exit(gkBreak);
   Result := gkUnhandled;
 end;
+
+finalization
+  FreeAndNil(GKeyRouter);
 
 end.

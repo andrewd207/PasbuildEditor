@@ -14,7 +14,7 @@ unit TermUI.FilteredPicker;
 interface
 
 uses
-  Classes, SysUtils, fgl, TermUI.Terminal, TermUI.Menu;
+  Classes, SysUtils, fgl, TermUI.Terminal, TermUI.Control, TermUI.Menu;
 
 type
   TFilteredPickerItem = class
@@ -274,24 +274,6 @@ begin
       kcEscape:
         Exit;  { Result = False }
 
-      kcCtrlC:
-        begin
-          GCtrlCRequested := True;
-          Exit;
-        end;
-
-      kcCtrlS:
-        begin
-          GSaveRequested := True;
-          Exit;
-        end;
-
-      kcCtrlX:
-        begin
-          GCtrlXRequested := True;
-          Exit;
-        end;
-
       kcUp:
         if Sel > 0 then
         begin
@@ -371,6 +353,12 @@ begin
           RebuildFilter;
           RefreshAll;
         end;
+
+      else begin
+        if Assigned(GOnUnhandledKey) then
+          GOnUnhandledKey(nil, K);
+        if GQuitRequested then Exit;
+      end;
     end;
   until False;
 end;
