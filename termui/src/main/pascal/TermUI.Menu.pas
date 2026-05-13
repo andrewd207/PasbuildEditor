@@ -17,8 +17,6 @@ uses
   Classes, SysUtils, StrUtils, fgl, TermUI.Terminal;
 
 type
-  TMenuAction = procedure of object;
-
   TMenuItemKind = (mikNormal, mikHeader, mikSeparator);
 
   TMenuItem = class
@@ -33,10 +31,10 @@ type
     DimItem:  Boolean;  // render label+value in dim/gray (e.g. inactive modules)
     DimValue: Boolean;  // render value only in dim/gray (e.g. "(none)")
     MarkOld:  Boolean;  // render value in yellow (e.g. older available versions)
-    Action:  TMenuAction;
-    constructor Create(const ALabel: string; AAction: TMenuAction = nil;
+    Action:  TNotifyEvent;
+    constructor Create(const ALabel: string; AAction: TNotifyEvent = nil;
       const AValue: string = ''; AHotkey: Char = #0; AHint: String = '');
-    constructor CreateEmbeddedHotkey(const ALabel: string; AAction: TMenuAction = nil;
+    constructor CreateEmbeddedHotkey(const ALabel: string; AAction: TNotifyEvent = nil;
       const AValue: string = ''; AHint: String = '');
     constructor CreateHeader(const ALabel: string);
     constructor CreateSeparator;
@@ -293,7 +291,7 @@ end;
   TMenuItem
   ══════════════════════════════════════════════════════════════════════ }
 
-constructor TMenuItem.Create(const ALabel: string; AAction: TMenuAction = nil;
+constructor TMenuItem.Create(const ALabel: string; AAction: TNotifyEvent = nil;
   const AValue: string = ''; AHotkey: Char = #0; AHint: String = '');
 begin
   inherited Create;
@@ -310,7 +308,7 @@ end;
 
 constructor TMenuItem.CreateEmbeddedHotkey(
   const ALabel: string;
-  AAction: TMenuAction;
+  AAction: TNotifyEvent;
   const AValue: string;
   AHint: string
 );
