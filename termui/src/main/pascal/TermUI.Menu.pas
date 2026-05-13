@@ -54,6 +54,7 @@ type
     FUnhandledChar:  Char;     // Set when a char key wasn't consumed; #0 otherwise
     FDeletePressed:  Boolean;  // True when Del was pressed on the current selection
     FF1Pressed:      Boolean;  // True when F1 was pressed
+    FF2Pressed:      Boolean;  // True when F2 was pressed
 
     function Selectable(I: Integer): Boolean;
     function NextSel(From, Dir: Integer): Integer;
@@ -83,6 +84,7 @@ type
     property UnhandledChar: Char          read FUnhandledChar;
     property DeletePressed: Boolean       read FDeletePressed;
     property F1Pressed:     Boolean       read FF1Pressed;
+    property F2Pressed:     Boolean       read FF2Pressed;
     { Screen row (1-based) of the currently selected item, for in-place editing. }
     function SelectedRow: Integer;
   end;
@@ -122,7 +124,7 @@ implementation
 
 const
   COL_LABEL_W = 20;
-  HELP_TEXT   = ' ↑↓ Navigate   Enter Select   Esc Back   ^S Save   ^X Save+Exit   ^C Quit   F1 About ';
+  HELP_TEXT   = ' ↑↓ Navigate   Enter Select   Esc Back   ^S Save   ^X Save+Exit   ^C Quit   F1 Help   F2 About ';
 
 { ══════════════════════════════════════════════════════════════════════
   Colour helpers
@@ -625,6 +627,7 @@ begin
   FUnhandledChar := #0;
   FDeletePressed := False;
   FF1Pressed     := False;
+  FF2Pressed     := False;
   Draw;
   repeat
     K := Term.ReadKey;
@@ -664,6 +667,11 @@ begin
 
       kcF1: begin
         FF1Pressed := True;
+        Exit;
+      end;
+
+      kcF2: begin
+        FF2Pressed := True;
         Exit;
       end;
 

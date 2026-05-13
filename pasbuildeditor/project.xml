@@ -10,6 +10,9 @@
     <resources>
       <filtering>true</filtering>
     </resources>
+    <compilerOptions>
+      <option>-FF</option>
+    </compilerOptions>
   </build>
   <test>
     <framework>auto</framework>

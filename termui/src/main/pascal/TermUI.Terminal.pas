@@ -24,7 +24,8 @@ type
     kcCtrlC,  // Ctrl+C
     kcCtrlS,  // Ctrl+S — save
     kcCtrlX,  // Ctrl+X — save and exit
-    kcF1
+    kcF1,
+    kcF2
   );
 
   TKeyEvent = record

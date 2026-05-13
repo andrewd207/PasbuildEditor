@@ -57,6 +57,7 @@ resourcestring
   SDescBootstrapExclude  = 'Units excluded from the auto-generated bootstrap program.';
   SDescSourcePkgIncludes = 'Extra paths included when running pasbuild source-package.';
   SDescIncludePaths      = 'Extra directories searched for include files (FPC -Fi flag).';
+  SDescCompilerOptions   = 'Extra FPC flags always passed to the compiler (e.g. -O2, -gw).';
 
   { Unit paths sub-menu }
   SManualPathsOn   = '[x] Manual paths (relative to project root)';

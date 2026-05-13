@@ -33,9 +33,11 @@ uses
   PasbuildEditor.Page.Profiles,
   PasbuildEditor.Page.Dependencies,
   PasbuildEditor.Page.ModuleDeps,
+  PasbuildEditor.Dialog.CompilerOptions,
   PasbuildEditor.Page.BootstrapExclude,
   PasbuildEditor.Page.SourcePackage,
-  PasbuildEditor.Page.UnitPaths;
+  PasbuildEditor.Page.UnitPaths,
+  PasbuildEditor.Page.ShowHelp;
 
 procedure RunCommonPage(Ctx: TUIContext; P: TProjectCommon);
 var
@@ -79,6 +81,11 @@ begin
       It := TMenuItem.Create('Include paths', nil,
         IntToStr(P.IncludePaths.Count) + ' entries', 'I');
       It.Desc := SDescIncludePaths; Menu.Add(It);
+      It := TMenuItem.Create('Compiler options', nil,
+        IfThen(P.CompilerOptions.Count = 0, '(none)',
+               JoinTruncated(P.CompilerOptions, ' ', Term.Width - 26)), 'P');
+      It.DimValue := (P.CompilerOptions.Count = 0);
+      It.Desc := SDescCompilerOptions; Menu.Add(It);
       It := TMenuItem.Create('Bootstrap exclude', nil,
         IfThen(P.BootstrapExclude.Count = 0, '(none)',
                JoinTruncated(P.BootstrapExclude, ' ', Term.Width - 26)), 'B');
@@ -122,6 +129,7 @@ begin
       if LastLabel <> '' then Menu.SelectByLabel(LastLabel);
       Sel := Menu.Run;
 
+      if Menu.F1Pressed then begin ShowHelpPage('build', LastLabel); Continue; end;
       if GSaveRequested then begin Ctx.SaveProject; GSaveRequested := False; Continue; end;
       if GQuitRequested or GCtrlCRequested or GCtrlXRequested or
          ((Sel = nil) and (Menu.UnhandledChar = #0)) then Break;
@@ -155,6 +163,9 @@ begin
           RunStringListPage(Ctx, Ctx.Breadcrumb + ' > Defines', P.Defines);
         'Include paths':
           RunUnitPathsPage(Ctx, P, 'Include Paths', P.IncludePaths, 'include');
+        'Compiler options':
+          RunCompilerOptionsDialog(Ctx,
+            Ctx.Breadcrumb + ' > Compiler options', P.CompilerOptions);
         'Bootstrap exclude':
           RunBootstrapExcludePage(Ctx, P);
         'Source package':

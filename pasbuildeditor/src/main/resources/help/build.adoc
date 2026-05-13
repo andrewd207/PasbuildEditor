@@ -1,0 +1,100 @@
+= Build / Dependencies Page Help
+
+This page covers all compiler settings, source paths, and external package
+dependencies for the current project.
+
+== Main source
+
+The entry-point Pascal source file passed to the compiler. Typically `Main.pas`
+or the file containing the `program` block. Paths are relative to the
+`project.xml` file location.
+
+Only shown for *application* projects.
+
+== Output directory
+
+The directory where compiled binaries, units (`.ppu`, `.o`), and other output
+files are written. Relative paths are resolved from the `project.xml` directory.
+
+Convention: `target/` (pasbuild default).
+
+== Source directory
+
+The root of the source tree. Pasbuild uses this to locate Pascal units
+automatically, so you do not need to list every unit path manually as long as
+they live under this directory.
+
+Convention: `src/main/pascal/`.
+
+== Executable name
+
+The name of the produced binary, without the platform extension. Pasbuild
+appends `.exe` on Windows automatically.
+
+Only shown for *application* projects.
+
+== Unit paths
+
+Extra directories searched for compiled units (`.ppu` files). Each entry can
+have an optional *condition* so the path is only active for certain platforms or
+profiles (e.g. `platform:linux`).
+
+Use this for units that live outside the source directory, such as third-party
+libraries you build locally.
+
+== Defines
+
+Conditional defines passed to the compiler with `-d`. For example, `DEBUG`
+activates `{$IFDEF DEBUG}` blocks in source code.
+
+Defines listed here are always active; profile-specific defines belong in the
+profile's own defines list.
+
+== Include paths
+
+Extra directories searched for Pascal include files (`.inc`). Passed to the
+compiler as `-Fi` flags.
+
+== Compiler options
+
+Extra FPC command-line flags passed to the compiler on every build, regardless
+of which profile (if any) is active. Each entry is a single flag, for example:
+
+- `-O2` — optimise for speed
+- `-gw` — generate DWARF debug info
+- `-Cg` — enable PIC (required for shared libraries on some platforms)
+
+Profile-specific flags belong in the profile's own *Compiler options* list so
+they are only applied when that profile is selected.
+
+== Bootstrap exclude
+
+Units excluded from the auto-generated bootstrap program. The bootstrap is a
+minimal Pascal program pasbuild uses to compile the real project from a
+different FPC installation.
+
+List units here that use platform-specific features not available in the
+bootstrap compiler (e.g. units that `{$LINK}` platform-specific object files).
+
+== Source package
+
+Extra directories included when running `pasbuild source-package`. By default,
+pasbuild includes the `src/` tree. Add paths here if your project has source
+files in non-standard locations (e.g. generated code in `target/generated/`).
+
+== Dependencies
+
+External package dependencies resolved from the pasbuild local repository.
+Each dependency has a *name* and a *version*. Pasbuild downloads and caches
+packages automatically before building.
+
+Use the package search (press Enter on this item) to browse available packages
+and select a version.
+
+== Module dependencies
+
+Sibling modules in a multi-module (POM) project that this module depends on.
+Pasbuild ensures sibling modules are compiled in the correct order and adds
+their output paths to this module's unit search paths automatically.
+
+Only shown when the project is a child module of a POM.

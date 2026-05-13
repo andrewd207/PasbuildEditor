@@ -1,0 +1,3 @@
+HELP_PROJECT RCDATA "project.adoc"
+HELP_BUILD   RCDATA "build.adoc"
+HELP_MODULES RCDATA "modules.adoc"

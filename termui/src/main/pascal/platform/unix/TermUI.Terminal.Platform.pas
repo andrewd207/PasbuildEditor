@@ -207,8 +207,11 @@ begin
       end;
       if B2 = Ord('O') then
       begin
-        if ReadByte(B3, 50) and (B3 = Ord('P')) then
-          Result.Code := kcF1;
+        if ReadByte(B3, 50) then
+          case B3 of
+            Ord('P'): Result.Code := kcF1;
+            Ord('Q'): Result.Code := kcF2;
+          end;
       end
       else if B2 = Ord('[') then
       begin
@@ -234,8 +237,11 @@ begin
             end;
           end;
           Ord('['): begin
-            if ReadByte(B4, 50) and (B4 = Ord('A')) then
-              Result.Code := kcF1;
+            if ReadByte(B4, 50) then
+              case B4 of
+                Ord('A'): Result.Code := kcF1;
+                Ord('B'): Result.Code := kcF2;
+              end;
           end;
         end;
       end

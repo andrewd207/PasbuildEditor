@@ -37,7 +37,8 @@ uses
   PasbuildEditor.Page.Profiles,
   PasbuildEditor.Page.BuildRunner,
   PasbuildEditor.Dialog.About,
-  PasbuildEditor.Dialog.PasbuildInit;
+  PasbuildEditor.Dialog.PasbuildInit,
+  PasbuildEditor.Page.ShowHelp;
 
 { ── POM page helpers ─────────────────────────────────────────────── }
 
@@ -180,6 +181,8 @@ begin
       SelIdx := Menu.Selected;
       UChar  := Menu.UnhandledChar;
 
+      if Menu.F1Pressed then begin ShowHelpPage('modules', LastLabel); Continue; end;
+      if Menu.F2Pressed then begin ShowAboutPage; Continue; end;
       if GSaveRequested then begin Ctx.SaveProject; GSaveRequested := False; Continue; end;
       if GQuitRequested or GCtrlCRequested or GCtrlXRequested then Break;
 
@@ -500,7 +503,8 @@ begin
       if (Menu.Selected >= 0) and (Menu.Selected < Menu.Items.Count) then
         Ctx.LastMenuLabel := Menu.Items[Menu.Selected].Label_;
 
-      if Menu.F1Pressed then begin ShowAboutPage; Continue; end;
+      if Menu.F1Pressed then begin ShowHelpPage('project', Ctx.LastMenuLabel); Continue; end;
+      if Menu.F2Pressed then begin ShowAboutPage; Continue; end;
 
       if GSaveRequested then begin Ctx.SaveProject; GSaveRequested := False; Continue; end;
 

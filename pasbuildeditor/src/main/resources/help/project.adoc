@@ -1,0 +1,78 @@
+= Project Page Help
+
+The project page shows the identity fields that describe your project and provides
+access to profiles, the build runner, and sub-pages.
+
+== Name
+
+The project name is used in generated files, dependency references, and the package
+repository. It should be a short, lowercase identifier with no spaces (e.g.
+`mylib` or `my-app`).
+
+For a sub-module inside a POM, the name is used when other modules declare a
+*module dependency* on this project.
+
+== Version
+
+The semantic version of this project (e.g. `1.0.0` or `2.3.1-beta`). Leave
+blank to inherit the version from a parent POM.
+
+Versions follow the `major.minor.patch` convention used by pasbuild's dependency
+resolver.
+
+== Author
+
+The author name or contact string written into generated project files and packages.
+Typically your name or organisation (e.g. `Jane Smith <jane@example.com>`).
+
+== License
+
+An SPDX license identifier for this project (e.g. `MIT`, `BSD-3-Clause`,
+`GPL-3.0-only`, `Apache-2.0`). Pasbuild writes this into generated package
+metadata. Leave blank to inherit from a parent POM.
+
+See https://spdx.org/licenses/ for the full list of identifiers.
+
+== Description
+
+A short, human-readable sentence describing what this project does. Written
+into generated package metadata and shown in the package browser.
+
+== Project URL
+
+The URL of the project's homepage or documentation site. Written into package
+metadata and the About page (e.g. `https://example.com/mylib`).
+
+== Repo URL
+
+The URL of the source code repository (e.g. a GitHub clone URL).
+Written into package metadata.
+
+== Profiles
+
+Named build profiles let you define different compiler settings for different
+scenarios. Each profile has an *ID*, optional *defines*, and optional *compiler
+options*.
+
+Common profiles: `debug` (adds `-gw -Cg`) and `release` (adds `-O2 -Xs`).
+
+Activate a profile on the command line with `pasbuild compile -p debug`.
+
+== Run build
+
+Opens the build runner, which lets you select a pasbuild goal (e.g. `compile`,
+`test`, `package`) and optional profile, then runs it and streams the output.
+
+== Build / Dependencies
+
+Opens the build and dependencies sub-page, covering compiler settings, source
+paths, unit paths, defines, external packages, and more.
+
+Only shown for *application* and *library* project types.
+
+== Modules / Children
+
+Opens the modules page, where you can view and manage the sub-projects that
+make up this multi-module (POM) build.
+
+Only shown for *POM* project types.

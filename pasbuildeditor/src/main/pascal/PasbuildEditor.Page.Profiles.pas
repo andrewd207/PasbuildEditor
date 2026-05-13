@@ -28,6 +28,7 @@ implementation
 uses
   StrUtils,
   TermUI.Terminal,
+  PasbuildEditor.Dialog.CompilerOptions,
   PasbuildEditor.Page.StringList;
 
 procedure RunProfileEditPage(Ctx: TUIContext; P: TProjectBase; AProfile: TProfile);
@@ -97,7 +98,7 @@ begin
             Ctx.Breadcrumb + ' > Profile: ' + AProfile.ID + ' > Defines',
             AProfile.Defines);
         'Compiler options':
-          RunStringListPage(Ctx,
+          RunCompilerOptionsDialog(Ctx,
             Ctx.Breadcrumb + ' > Profile: ' + AProfile.ID + ' > Compiler options',
             AProfile.CompilerOptions);
         'Delete profile':

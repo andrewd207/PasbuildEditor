@@ -1,0 +1,42 @@
+= Modules Page Help
+
+The modules page lists the sub-projects that make up this multi-module (POM)
+build and lets you add, remove, enable, or disable them.
+
+== Modules list
+
+Each row shows a module's *name* (read from its `project.xml`) and its *path*
+relative to the POM's `project.xml` directory.
+
+- *Enabled* modules are built by default when you run `pasbuild compile` at
+  the POM level.
+- *Disabled* modules (shown greyed out) are skipped unless explicitly selected
+  with `-m module-name`.
+
+Press `E` on a selected module to enable it, or `D` to disable it.
+Press `Del` to remove a module from the POM (no files are deleted on disk).
+
+== Create new module
+
+Runs an interactive wizard that:
+
+. Asks for a new subdirectory name.
+. Creates the directory under the POM root.
+. Runs `pasbuild init` inside it to scaffold a new `project.xml`.
+. Adds the new module to this POM.
+
+The new module inherits the POM's *author* and *license* as defaults.
+
+== Scan folder for modules
+
+Scans all immediate subdirectories of the POM root for `project.xml` files
+that are not yet listed as modules. Presents the found candidates as a menu;
+select one to add it.
+
+Useful when you have created sub-projects manually or cloned them into place.
+
+== Add existing path
+
+Lets you type or browse to a relative path for a module whose `project.xml`
+already exists on disk. Use this if the module lives in a non-standard location
+(e.g. a nested subdirectory deeper than one level).
