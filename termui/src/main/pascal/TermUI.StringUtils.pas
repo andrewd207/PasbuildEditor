@@ -34,6 +34,14 @@ procedure DeleteNeutral(var AStr: string; AFrom, ACount: Integer);
 { Returns the character at 0-based position AIndex. }
 function CharFromIndex(const AStr: string; AIndex: Integer): Char;
 
+{ Returns the number of bytes in the UTF-8 sequence starting at byte AStr[I]
+  (1-based). Returns 1 for ASCII or invalid leading bytes. }
+function UTF8SeqLen(const AStr: string; I: Integer): Integer;
+
+{ Returns the visual display width of AStr in terminal columns, counting each
+  UTF-8 codepoint as 1 column. }
+function UTF8VisualLen(const AStr: string): Integer;
+
 type
   TStringHelper = type helper for string
   private
@@ -75,6 +83,28 @@ end;
 function CharFromIndex(const AStr: string; AIndex: Integer): Char;
 begin
   Result := AStr[AIndex + 1];
+end;
+
+function UTF8SeqLen(const AStr: string; I: Integer): Integer;
+var B: Byte;
+begin
+  B := Ord(AStr[I]);
+  if B < $80 then Result := 1
+  else if B < $E0 then Result := 2
+  else if B < $F0 then Result := 3
+  else Result := 4;
+end;
+
+function UTF8VisualLen(const AStr: string): Integer;
+var I: Integer;
+begin
+  Result := 0;
+  I := 1;
+  while I <= Length(AStr) do
+  begin
+    Inc(Result);
+    Inc(I, UTF8SeqLen(AStr, I));
+  end;
 end;
 
 function TStringHelper.GetIndex(AIndex: Integer): Char;

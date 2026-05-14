@@ -142,13 +142,13 @@ begin
       if W = '' then Continue;
       if Line = '' then
       begin
-        if Length(W) > AWidth then W := CopyNeutral(W, 0, AWidth);
+        if UTF8VisualLen(W) > AWidth then W := CopyNeutral(W, 0, AWidth);
         Line := W;
       end
-      else if Length(Line) + 1 + Length(W) > AWidth then
+      else if UTF8VisualLen(Line) + 1 + UTF8VisualLen(W) > AWidth then
       begin
         AList.Add(TDisplayLine.Create(AKind, Line));
-        if Length(W) > AWidth then W := CopyNeutral(W, 0, AWidth);
+        if UTF8VisualLen(W) > AWidth then W := CopyNeutral(W, 0, AWidth);
         Line := W;
       end
       else
@@ -183,11 +183,24 @@ var
     Inc(ATOCCount);
   end;
 
+var
+  ParaBuf: string;
+
+  procedure FlushPara;
+  begin
+    if ParaBuf <> '' then
+    begin
+      AppendWrapped(ParaBuf, AContentWidth, dlkPara, ADisplay);
+      ParaBuf := '';
+    end;
+  end;
+
 begin
   ATOCCount := 0;
   SetLength(ATOC, 16);
   InCode  := False;
   InTable := False;
+  ParaBuf := '';
 
   for I := 0 to ARaw.Count - 1 do
   begin
@@ -195,6 +208,7 @@ begin
 
     if S = '----' then
     begin
+      FlushPara;
       InCode := not InCode;
       Push(dlkRule);
       Continue;
@@ -213,6 +227,7 @@ begin
 
     if Trim(S) = '' then
     begin
+      FlushPara;
       if (ADisplay.Count > 0) and (ADisplay[ADisplay.Count - 1].Kind <> dlkBlank) then
         Push(dlkBlank);
       Continue;
@@ -220,6 +235,7 @@ begin
 
     if ParseHeadingLine(S, Level, Txt) then
     begin
+      FlushPara;
       case Level of
         1: Push(dlkH1, Txt);
         2: begin Push(dlkH2, Txt); AddTOC(Txt); end;
@@ -231,30 +247,38 @@ begin
 
     if (Length(S) >= 3) and (S = StringOfChar('-', Length(S))) then
     begin
+      FlushPara;
       Push(dlkRule);
       Continue;
     end;
 
     if (Length(S) >= 2) and (S.Index[0] in ['*', '-']) and (S.Index[1] = ' ') then
     begin
+      FlushPara;
       AppendWrapped(CopyNeutral(S, 2, MaxInt), AContentWidth - 2, dlkBullet, ADisplay);
       Continue;
     end;
 
     if (Length(S) >= 2) and (S.Index[0] = '.') and (S.Index[1] = ' ') then
     begin
+      FlushPara;
       AppendWrapped(CopyNeutral(S, 2, MaxInt), AContentWidth - 2, dlkBullet, ADisplay);
       Continue;
     end;
 
     if (Length(S) > 0) and (S.Index[0] = '|') then
     begin
+      FlushPara;
       Push(dlkPara, CopyNeutral(S, 1, MaxInt));
       Continue;
     end;
 
-    AppendWrapped(S, AContentWidth, dlkPara, ADisplay);
+    if ParaBuf = '' then
+      ParaBuf := S
+    else
+      ParaBuf := ParaBuf + ' ' + Trim(S);
   end;
+  FlushPara;
 end;
 
 { ══════════════════════════════════════════════════════════════════════
@@ -263,7 +287,7 @@ end;
 
 procedure RenderInline(const S: string; MaxCols: Integer);
 var
-  I, Col: Integer;
+  I, Col, SeqLen: Integer;
   InBold, InItal, InMono: Boolean;
   Ch: Char;
 begin
@@ -280,22 +304,26 @@ begin
         InBold := not InBold;
         if InBold then Term.SetFG(clBrightWhite)
         else Term.ResetColors;
+        Inc(I);
       end;
       '_': begin
         InItal := not InItal;
         Term.SetUnderline(InItal);
+        Inc(I);
       end;
       '`', '+': begin
         InMono := not InMono;
         if InMono then Term.SetFG(clCyan)
         else Term.ResetColors;
+        Inc(I);
       end;
       else begin
-        Term.WriteStr(Ch);
+        SeqLen := UTF8SeqLen(S, I);
+        Term.WriteStr(Copy(S, I, SeqLen));
         Inc(Col);
+        Inc(I, SeqLen);
       end;
     end;
-    Inc(I);
   end;
   Term.ResetColors;
   Term.SetUnderline(False);
@@ -411,7 +439,7 @@ begin
   if (ATOCIdx < 0) or (ATOCIdx >= FTOCCount) then Exit;
   IsSel := (ATOCIdx = FTOCSel);
   Txt := FTOC[ATOCIdx].Heading;
-  if Length(Txt) > TOC_W - 3 then Txt := CopyNeutral(Txt, 0, TOC_W - 4) + '…';
+  if Length(Txt) > TOC_W - 3 then Txt := CopyNeutral(Txt, 0, TOC_W - 4) + '>';
   if IsSel then
   begin
     if FFocusTOC then begin Term.SetFG(clBlack); Term.SetBG(clCyan); end

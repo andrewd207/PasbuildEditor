@@ -302,11 +302,13 @@ var
   Idx:     Integer;
   B, F:    TScreenCell;
   LastX:   Integer;
-  LastY:   Integer;
-  LastFG:  TColor;
-  LastBG:  TColor;
-  LastUL:  Boolean;
-  Buf:     string;
+  LastY:          Integer;
+  LastFG:         TColor;
+  LastBG:         TColor;
+  LastUL:         Boolean;
+  Buf:            string;
+  RowHadEmit:     Boolean;
+  RowHadMultiByte: Boolean;
 
   procedure Emit(const S: string); inline;
   begin
@@ -326,6 +328,10 @@ begin
   Buf    := '';
 
   for Y := 1 to H do
+  begin
+    RowHadEmit     := False;
+    RowHadMultiByte := False;
+
     for X := 1 to W do
     begin
       Idx := CellIndex(X, Y);
@@ -360,9 +366,19 @@ begin
 
       Emit(B.Ch);
       Inc(LastX);
+      RowHadEmit := True;
+      if Ord(B.Ch) > $7F then RowHadMultiByte := True;
 
       FFront[Idx] := B;
     end;
+
+    { Multi-byte UTF-8 chars cause the terminal's visual cursor to lag behind
+      our cell-grid LastX.  Trailing spaces that should clear the right edge of
+      the row end up at wrong visual columns.  \e[K erases from the actual
+      terminal cursor position to end of line, covering any uncovered cells. }
+    if RowHadEmit and RowHadMultiByte then
+      Emit(#27'[K');
+  end;
 
   { Always reposition cursor to the logical pen position and reset attributes }
   if FUseColor then Buf := Buf + #27'[0m';

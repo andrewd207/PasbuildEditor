@@ -102,6 +102,7 @@ begin
   AF := ActiveForm;
   if Assigned(AF) and AF.Invalidated then
   begin
+    Term.InvalidateFront;
     AF.Paint;
     Term.FlushOutput;
   end;
