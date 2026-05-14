@@ -31,6 +31,7 @@ implementation
 
 uses
   TermUI.Terminal, TermUI.Menu, TermUI.PathPicker, TermUI.FilteredPicker,
+  TermUI.StringUtils,
   PasbuildEditor.SPDX,
   PasbuildEditor.Strings,
   PasbuildEditor.UI.Utils,
@@ -52,6 +53,7 @@ var
   ModPath:    string;
   ProjectDir: string;
   I:          Integer;
+  TmpPos:     Integer;
 
   procedure ShowMsg(const S: string; AColor: TColor);
   begin
@@ -68,7 +70,7 @@ begin
   if not EditLine('New module folder name', '', FolderName) or (FolderName = '') then Exit;
 
   FolderName := ExcludeLeadingPathDelimiter(FolderName);
-  if (FolderName = '') or (Pos('..', FolderName) > 0) then
+  if (FolderName = '') or PosNeutral('..', FolderName) then
   begin
     ShowMsg('Folder name must not be empty or contain "..".', clRed);
     Exit;
@@ -77,7 +79,7 @@ begin
   ProjectDir := IncludeTrailingPathDelimiter(ExtractFilePath(ExpandFileName(Ctx.Project.FileName)));
   FullDir    := ProjectDir + FolderName;
 
-  if Pos(ProjectDir, IncludeTrailingPathDelimiter(FullDir)) <> 1 then
+  if not PosNeutral(ProjectDir, IncludeTrailingPathDelimiter(FullDir), TmpPos) or (TmpPos <> 0) then
   begin
     ShowMsg('Folder must be inside the project directory.', clRed);
     Exit;

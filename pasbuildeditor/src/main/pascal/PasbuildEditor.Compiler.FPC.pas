@@ -34,7 +34,8 @@ type
 implementation
 
 uses
-  Process;
+  Process,
+  TermUI.StringUtils;
 
 const
   CFPCExecutable = 'fpc';
@@ -103,12 +104,10 @@ begin
   Result := TCompilerOptionItem.Create;
   Result.Flag        := AFlag;
   Result.Description := ADesc;
-  LtPos := Pos('<', AFlag);
-  GtPos := Pos('>', AFlag);
-  if (LtPos > 0) and (GtPos > LtPos) then
+  if PosNeutral('<', AFlag, LtPos) and PosNeutral('>', AFlag, GtPos) and (GtPos > LtPos) then
   begin
     Result.HasArgument  := True;
-    Result.ArgumentHint := Copy(AFlag, LtPos, GtPos - LtPos + 1);
+    Result.ArgumentHint := CopyNeutral(AFlag, LtPos, GtPos - LtPos + 1);
   end
   else
     Result.HasArgument := False;
@@ -137,27 +136,27 @@ begin
       Trimmed := TrimLeft(Line);
 
       { must start with '-' or '@' to be an option line }
-      if (Trimmed = '') or not (Trimmed[1] in ['-', '@']) then
+      if (Trimmed = '') or not (Trimmed.Index[0] in ['-', '@']) then
         Continue;
 
       { split flag from description: flag ends at first run of 2+ spaces }
-      J := 1;
-      while J <= Length(Trimmed) do
+      J := 0;
+      while J < Length(Trimmed) do
       begin
-        if (Trimmed[J] = ' ') and (J < Length(Trimmed)) and (Trimmed[J+1] = ' ') then
+        if (Trimmed.Index[J] = ' ') and (J < Length(Trimmed) - 1) and (Trimmed.Index[J + 1] = ' ') then
           Break;
         Inc(J);
       end;
-      Flag := TrimRight(Copy(Trimmed, 1, J - 1));
+      Flag := TrimRight(CopyNeutral(Trimmed, 0, J));
 
       { skip degenerate lines }
       if (Flag = '') or (Flag = '-') then
         Continue;
 
       SpacePos := J;
-      while (SpacePos <= Length(Trimmed)) and (Trimmed[SpacePos] = ' ') do
+      while (SpacePos < Length(Trimmed)) and (Trimmed.Index[SpacePos] = ' ') do
         Inc(SpacePos);
-      Desc := Trim(Copy(Trimmed, SpacePos, MaxInt));
+      Desc := Trim(CopyNeutral(Trimmed, SpacePos, MaxInt));
 
       AList.Add(MakeOption(Flag, Desc));
     end;
@@ -179,10 +178,8 @@ begin
   { fpc -iV prints just the version number, e.g. '3.2.2' }
   Raw := Trim(RunCompiler(['-iV']));
   { strip anything after the first newline }
-  I := Pos(#10, Raw);
-  if I > 0 then Raw := Trim(Copy(Raw, 1, I - 1));
-  I := Pos(#13, Raw);
-  if I > 0 then Raw := Trim(Copy(Raw, 1, I - 1));
+  if PosNeutral(#10, Raw, I) then Raw := Trim(CopyNeutral(Raw, 0, I));
+  if PosNeutral(#13, Raw, I) then Raw := Trim(CopyNeutral(Raw, 0, I));
   Result := Raw;
 end;
 

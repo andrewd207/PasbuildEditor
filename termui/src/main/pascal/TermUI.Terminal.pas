@@ -125,7 +125,7 @@ function Term: TTerminal;
 
 implementation
 
-uses SysUtils;
+uses SysUtils, TermUI.StringUtils;
 
 { ── ANSI code tables (same as before, now used only during flush) ── }
 
@@ -239,9 +239,9 @@ var
   I, Idx: Integer;
   C: Char;
 begin
-  for I := 1 to Length(S) do
+  for I := 0 to Length(S) - 1 do
   begin
-    C := S[I];
+    C := S.Index[I];
     if C = #10 then
     begin
       Inc(FCurY);

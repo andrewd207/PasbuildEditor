@@ -28,6 +28,7 @@ implementation
 uses
   Process,
   TermUI.Terminal, TermUI.Menu,
+  TermUI.StringUtils,
   PasbuildEditor.ProjectModel,
   TermUI.Application;
 
@@ -51,51 +52,51 @@ begin
   AOptions.Clear;
 
   S := Line;
-  while (S <> '') and (S[Length(S)] in [#13, #10]) do
-    Delete(S, Length(S), 1);
+  while (S <> '') and (S.Index[Length(S) - 1] in [#13, #10]) do
+    DeleteNeutral(S, Length(S) - 1, 1);
 
   L := Length(S);
-  if (L < 2) or (S[L] <> ' ') or (S[L-1] <> ':') then Exit;
-  if Copy(S, 1, 6) = '[INFO]' then Exit;
+  if (L < 2) or (S.Index[L - 1] <> ' ') or (S.Index[L - 2] <> ':') then Exit;
+  if CopyNeutral(S, 0, 6) = '[INFO]' then Exit;
 
   Result := True;
-  S := Copy(S, 1, L - 2);
+  S := CopyNeutral(S, 0, L - 2);
 
-  D2 := 0;
-  for I := Length(S) downto 1 do
-    if S[I] = ']' then begin D2 := I; Break; end;
-  if D2 > 0 then
+  D2 := -1;
+  for I := Length(S) - 1 downto 0 do
+    if S.Index[I] = ']' then begin D2 := I; Break; end;
+  if D2 >= 0 then
   begin
-    D1 := 0;
-    for I := D2 - 1 downto 1 do
-      if S[I] = '[' then begin D1 := I; Break; end;
-    if D1 > 0 then
+    D1 := -1;
+    for I := D2 - 1 downto 0 do
+      if S.Index[I] = '[' then begin D1 := I; Break; end;
+    if D1 >= 0 then
     begin
-      ADefault := Copy(S, D1 + 1, D2 - D1 - 1);
-      S := TrimRight(Copy(S, 1, D1 - 1));
+      ADefault := CopyNeutral(S, D1 + 1, D2 - D1 - 1);
+      S := TrimRight(CopyNeutral(S, 0, D1));
     end;
   end;
 
-  P1 := 0;
-  for I := 1 to Length(S) do
-    if S[I] = '(' then begin P1 := I; Break; end;
-  if P1 > 0 then
+  P1 := -1;
+  for I := 0 to Length(S) - 1 do
+    if S.Index[I] = '(' then begin P1 := I; Break; end;
+  if P1 >= 0 then
   begin
-    P2 := 0;
-    for I := Length(S) downto P1 + 1 do
-      if S[I] = ')' then begin P2 := I; Break; end;
+    P2 := -1;
+    for I := Length(S) - 1 downto P1 + 1 do
+      if S.Index[I] = ')' then begin P2 := I; Break; end;
     if P2 > P1 then
     begin
-      OptStr    := Copy(S, P1 + 1, P2 - P1 - 1);
-      AQuestion := TrimRight(Copy(S, 1, P1 - 1));
-      Start := 1;
-      for I := 1 to Length(OptStr) do
-        if OptStr[I] = '/' then
+      OptStr    := CopyNeutral(S, P1 + 1, P2 - P1 - 1);
+      AQuestion := TrimRight(CopyNeutral(S, 0, P1));
+      Start := 0;
+      for I := 0 to Length(OptStr) - 1 do
+        if OptStr.Index[I] = '/' then
         begin
-          AOptions.Add(Trim(Copy(OptStr, Start, I - Start)));
+          AOptions.Add(Trim(CopyNeutral(OptStr, Start, I - Start)));
           Start := I + 1;
         end;
-      AOptions.Add(Trim(Copy(OptStr, Start, MaxInt)));
+      AOptions.Add(Trim(CopyNeutral(OptStr, Start, MaxInt)));
       Exit;
     end;
   end;
@@ -162,19 +163,19 @@ begin
       end;
       Idle := 0;
 
-      LastNL := 0;
-      for I := Length(Accum) downto 1 do
-        if Accum[I] = #10 then begin LastNL := I; Break; end;
+      LastNL := -1;
+      for I := Length(Accum) - 1 downto 0 do
+        if Accum.Index[I] = #10 then begin LastNL := I; Break; end;
       LastLine := StringReplace(
-        Copy(Accum, LastNL + 1, MaxInt), #13, '', [rfReplaceAll]);
+        CopyNeutral(Accum, LastNL + 1, MaxInt), #13, '', [rfReplaceAll]);
 
       if not ParseInitPrompt(LastLine, Question, Default_, Options) then
         Continue;
 
-      IsVersionQ := (AParentLicense <> '') and (Pos('version', LowerCase(Question)) > 0);
-      IsLicenseQ := (AParentLicense <> '') and (Pos('license', LowerCase(Question)) > 0);
+      IsVersionQ := (AParentLicense <> '') and PosNeutral('version', LowerCase(Question));
+      IsLicenseQ := (AParentLicense <> '') and PosNeutral('license', LowerCase(Question));
 
-      if (AParentAuthor <> '') and (Pos('author', LowerCase(Question)) > 0) then
+      if (AParentAuthor <> '') and PosNeutral('author', LowerCase(Question)) then
         Default_ := AParentAuthor;
 
       if IsVersionQ then

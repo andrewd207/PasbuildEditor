@@ -24,6 +24,7 @@ implementation
 uses
   Process,
   TermUI.Terminal, TermUI.Menu,
+  TermUI.StringUtils,
   PasbuildEditor.UI.Colors, PasbuildEditor.GlobalKeys,
   TermUI.Application;
 
@@ -268,31 +269,30 @@ var
       if LineIdx < DisplayLineCount then
       begin
         S := GetDisplayLine(LineIdx);
-        if Length(S) > Term.Width then S := Copy(S, 1, Term.Width);
+        if Length(S) > Term.Width then S := CopyNeutral(S, 0, Term.Width);
         if IsJsonMode then
           WriteJsonLine(S)
-        else if Copy(S, 1, 7) = '[INFO] ' then
+        else if CopyNeutral(S, 0, 7) = '[INFO] ' then
         begin
           Term.SetFG(clBlue);   Term.WriteStr('[INFO]');
-          Term.ResetColors;     Term.WriteStr(Copy(S, 7, MaxInt));
+          Term.ResetColors;     Term.WriteStr(CopyNeutral(S, 6, MaxInt));
         end
-        else if Copy(S, 1, 10) = '[WARNING] ' then
+        else if CopyNeutral(S, 0, 10) = '[WARNING] ' then
         begin
           Term.SetFG(clYellow); Term.WriteStr('[WARNING]');
-          Term.ResetColors;     Term.WriteStr(Copy(S, 10, MaxInt));
+          Term.ResetColors;     Term.WriteStr(CopyNeutral(S, 9, MaxInt));
         end
-        else if Copy(S, 1, 8) = '[ERROR] ' then
+        else if CopyNeutral(S, 0, 8) = '[ERROR] ' then
         begin
           Term.SetFG(clRed);    Term.WriteStr('[ERROR]');
-          Term.ResetColors;     Term.WriteStr(Copy(S, 8, MaxInt));
+          Term.ResetColors;     Term.WriteStr(CopyNeutral(S, 7, MaxInt));
         end
-        else if (Length(S) > 1) and (S[1] = '[') then
+        else if (Length(S) > 1) and (S.Index[0] = '[') then
         begin
-          TagEnd := Pos('] ', S);
-          if TagEnd > 1 then
+          if PosNeutral('] ', S, TagEnd) and (TagEnd > 0) then
           begin
-            Term.SetFG(clBrightCyan); Term.WriteStr(Copy(S, 1, TagEnd));
-            Term.ResetColors;         Term.WriteStr(Copy(S, TagEnd + 1, MaxInt));
+            Term.SetFG(clBrightCyan); Term.WriteStr(CopyNeutral(S, 0, TagEnd + 1));
+            Term.ResetColors;         Term.WriteStr(CopyNeutral(S, TagEnd + 1, MaxInt));
           end
           else
             Term.WriteStr(S);
@@ -321,9 +321,9 @@ var
     C:  Char;
     J:  Integer;
   begin
-    for J := 1 to Length(AData) do
+    for J := 0 to Length(AData) - 1 do
     begin
-      C := AData[J];
+      C := AData.Index[J];
       if C = #13 then Continue;
       if C = #10 then
       begin
@@ -383,7 +383,7 @@ var
       repeat
         if (SR.Attr and faDirectory) <> 0 then Continue;
         PlugName := SR.Name;
-        PlugGoal := Copy(PlugName, Length('pasbuild-') + 1, MaxInt);
+        PlugGoal := CopyNeutral(PlugName, Length('pasbuild-'), MaxInt);
         if (PlugGoal = '') or (ASeen.IndexOf(PlugGoal) >= 0) then Continue;
         Idx := ASeen.Count;
         ASeen.Add(PlugGoal);

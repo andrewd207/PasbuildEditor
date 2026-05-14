@@ -13,8 +13,8 @@ unit TermUI.PathPicker;
 
 interface
 
-uses Classes, SysUtils, TermUI.Terminal, TermUI.Control, TermUI.Forms,
-     TermUI.Application, TermUI.Menu;
+uses Classes, SysUtils, TermUI.StringUtils, TermUI.Terminal, TermUI.Control,
+     TermUI.Forms, TermUI.Application, TermUI.Menu;
 
 { Full-screen recursive path picker. ABaseDir is the root to browse.
   ADirsOnly=True restricts selection to directories.
@@ -107,7 +107,7 @@ begin
   try
     repeat
       if (SR.Name = '.') or (SR.Name = '..') then Continue;
-      if (not FShowHidden) and (SR.Name[1] = '.') then Continue;
+      if (not FShowHidden) and (CharFromIndex(SR.Name, 0) = '.') then Continue;
       if (SR.Attr and faDirectory) <> 0 then
       begin
         RelEntry := ARelDir + SR.Name + PathDelim;
@@ -129,7 +129,7 @@ var
   I:        Integer;
 begin
   NamePart    := ExtractFileName(ExcludeTrailingPathDelimiter(FFilter));
-  FShowHidden := (NamePart <> '') and (NamePart[1] = '.');
+  FShowHidden := (NamePart <> '') and (NamePart.Index[0] = '.');
   All := TStringList.Create;
   try
     { swap FShown so CollectAll writes into All }
@@ -139,7 +139,7 @@ begin
     FShown.Clear;
     for I := 0 to All.Count - 1 do
       if (FFilter = '') or
-         (Pos(LowerCase(FFilter), LowerCase(All[I])) > 0) then
+         PosNeutral(LowerCase(FFilter), LowerCase(All[I])) then
         FShown.Add(All[I]);
   finally
     All.Free;
@@ -201,7 +201,7 @@ begin
       end
       else
       begin
-        if (Length(Entry) > 0) and (Entry[Length(Entry)] = PathDelim) then
+        if (Length(Entry) > 0) and (Entry.Index[Length(Entry) - 1] = PathDelim) then
           Term.SetFG(clCyan)
         else
           Term.ResetColors;
@@ -318,7 +318,7 @@ begin
     kcBackspace: begin
       if Length(FFilter) > 0 then
       begin
-        Delete(FFilter, Length(FFilter), 1);
+        DeleteNeutral(FFilter, Length(FFilter) - 1, 1);
         BuildShown;
         FSel           := 0;
         FFilterFocused := True;

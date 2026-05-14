@@ -15,6 +15,7 @@ interface
 
 uses
   Classes, SysUtils, fgl,
+  TermUI.StringUtils,
   TermUI.Terminal, TermUI.Control, TermUI.Forms, TermUI.Application, TermUI.Menu;
 
 type
@@ -136,8 +137,8 @@ begin
   begin
     It := FPickerItems[J];
     if (Lo = '') or
-       (Pos(Lo, LowerCase(It.Label_)) > 0) or
-       (Pos(Lo, LowerCase(It.Desc))   > 0) then
+       PosNeutral(Lo, LowerCase(It.Label_)) or
+       PosNeutral(Lo, LowerCase(It.Desc)) then
     begin
       FFiltered[FFilterCount] := J;
       Inc(FFilterCount);
@@ -180,7 +181,7 @@ begin
   Term.SetFG(clBrightYellow);
   Term.WriteStr(PromptStr);
   if FStaged then Term.SetFG(clBrightGreen) else Term.SetFG(clWhite);
-  Visible_ := Copy(FBuf, Scroll + 1, FieldW);
+  Visible_ := CopyNeutral(FBuf, Scroll, FieldW);
   Term.WriteStr(Visible_);
   Term.ClearToEOL;
   DrawRule(4, 1, Term.Width);
@@ -220,7 +221,7 @@ begin
     LabelStr := It.Label_;
     LabelW   := COL_FLAG_W;
     if Length(LabelStr) > LabelW then
-      LabelStr := Copy(LabelStr, 1, LabelW);
+      LabelStr := CopyNeutral(LabelStr, 0, LabelW);
     while Length(LabelStr) < LabelW do LabelStr := LabelStr + ' ';
     Term.WriteStr(LabelStr);
     DescW   := Term.Width - 3 - LabelW - 2;
@@ -230,7 +231,7 @@ begin
       if not IsSel then Term.SetFG(clBrightBlack);
       Term.WriteStr('  ');
       if Length(DescStr) > DescW then
-        DescStr := Copy(DescStr, 1, DescW - 1) + '…';
+        DescStr := CopyNeutral(DescStr, 0, DescW - 1) + '…';
       Term.WriteStr(DescStr);
     end;
     Term.ResetColors;
@@ -248,7 +249,7 @@ begin
     Term.SetFG(clBrightBlack);
     HintStr := ' Enter again to confirm: ' + FPickerItems[FFiltered[0]].Label_;
     if Length(HintStr) > Term.Width - 1 then
-      HintStr := Copy(HintStr, 1, Term.Width - 2) + '…';
+      HintStr := CopyNeutral(HintStr, 0, Term.Width - 2) + '…';
     Term.WriteStr(HintStr);
   end;
   DrawRule(Term.Height - 1, 1, Term.Width);
@@ -339,7 +340,7 @@ begin
     kcBackspace:
       if FCur > 1 then
       begin
-        Delete(FBuf, FCur - 1, 1);
+        DeleteNeutral(FBuf, FCur - 2, 1);
         Dec(FCur);
         FStaged := False;
         FSel    := 0;
@@ -351,7 +352,7 @@ begin
     kcDelete:
       if FCur <= Length(FBuf) then
       begin
-        Delete(FBuf, FCur, 1);
+        DeleteNeutral(FBuf, FCur - 1, 1);
         FStaged := False;
         FSel    := 0;
         FTopRow := 0;

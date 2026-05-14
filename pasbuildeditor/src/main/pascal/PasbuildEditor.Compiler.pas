@@ -14,7 +14,8 @@ unit PasbuildEditor.Compiler;
 interface
 
 uses
-  Classes, SysUtils, fgl, Process;
+  Classes, SysUtils, fgl, Process,
+  TermUI.StringUtils;
 
 type
   TCompilerOptionItem = class
@@ -145,13 +146,14 @@ begin
     if Proc.Running then Proc.Terminate(0);
     Proc.Free;
   end;
-  P := Pos('"compilerName"', Output);
-  if P = 0 then Exit;
-  P := Pos(':', Output, P) + 1;
-  while (P <= Length(Output)) and (Output[P] in [' ', #9, '"']) do Inc(P);
+  if not PosNeutral('"compilerName"', Output, P) then Exit;
+  { Find ':' starting from P (0-based) }
+  if not PosNeutral(':', CopyNeutral(Output, P, MaxInt), Q) then Exit;
+  P := P + Q + 1;  { P is now 0-based index of char after ':' }
+  while (P < Length(Output)) and (Output.Index[P] in [' ', #9, '"']) do Inc(P);
   Q := P;
-  while (Q <= Length(Output)) and (Output[Q] <> '"') do Inc(Q);
-  Result := Copy(Output, P, Q - P);
+  while (Q < Length(Output)) and (Output.Index[Q] <> '"') do Inc(Q);
+  Result := CopyNeutral(Output, P, Q - P);
 end;
 
 end.

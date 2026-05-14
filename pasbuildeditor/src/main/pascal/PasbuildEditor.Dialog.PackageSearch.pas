@@ -36,6 +36,7 @@ implementation
 uses
   PasbuildEditor.UI.Colors,
   PasbuildEditor.UIContext,
+  TermUI.StringUtils,
   TermUI.Application, TermUI.Forms;
 
 { ══════════════════════════════════════════════════════════════════════
@@ -52,7 +53,7 @@ type
 function ParseSemver(const S: string): TSemver;
 var
   Main, Pre, Part: string;
-  Dash, Dot1, Dot2: Integer;
+  Dash, Dot1, Dot2, TmpPos: Integer;
 begin
   Result.IsValid    := False;
   Result.PreRelease := '';
@@ -61,36 +62,37 @@ begin
   Result.Patch      := 0;
 
   Main := S;
-  Dash := Pos('-', Main);
-  if Dash > 0 then
+  if PosNeutral('-', Main, Dash) then
   begin
-    Pre  := Copy(Main, Dash + 1, MaxInt);
-    Main := Copy(Main, 1, Dash - 1);
+    Pre  := CopyNeutral(Main, Dash + 1, MaxInt);
+    Main := CopyNeutral(Main, 0, Dash);
   end;
   { Strip build metadata }
-  Dot1 := Pos('+', Main);
-  if Dot1 > 0 then
-    Main := Copy(Main, 1, Dot1 - 1);
+  if PosNeutral('+', Main, Dot1) then
+    Main := CopyNeutral(Main, 0, Dot1);
 
-  Dot1 := Pos('.', Main);
-  if Dot1 = 0 then Exit;
-  Dot2 := Pos('.', Main, Dot1 + 1);
+  if not PosNeutral('.', Main, Dot1) then Exit;
+  { Find second dot after Dot1 }
+  if PosNeutral('.', CopyNeutral(Main, Dot1 + 1, MaxInt), TmpPos) then
+    Dot2 := Dot1 + 1 + TmpPos
+  else
+    Dot2 := -1;
 
-  if Dot2 = 0 then
+  if Dot2 < 0 then
   begin
-    Part := Copy(Main, 1, Dot1 - 1);
+    Part := CopyNeutral(Main, 0, Dot1);
     if not TryStrToInt(Part, Result.Major) then Exit;
-    Part := Copy(Main, Dot1 + 1, MaxInt);
+    Part := CopyNeutral(Main, Dot1 + 1, MaxInt);
     if not TryStrToInt(Part, Result.Minor) then Exit;
     Result.Patch := 0;
   end
   else
   begin
-    Part := Copy(Main, 1, Dot1 - 1);
+    Part := CopyNeutral(Main, 0, Dot1);
     if not TryStrToInt(Part, Result.Major) then Exit;
-    Part := Copy(Main, Dot1 + 1, Dot2 - Dot1 - 1);
+    Part := CopyNeutral(Main, Dot1 + 1, Dot2 - Dot1 - 1);
     if not TryStrToInt(Part, Result.Minor) then Exit;
-    Part := Copy(Main, Dot2 + 1, MaxInt);
+    Part := CopyNeutral(Main, Dot2 + 1, MaxInt);
     if not TryStrToInt(Part, Result.Patch) then Exit;
   end;
   Result.PreRelease := Pre;
@@ -193,7 +195,7 @@ begin
   if SR.Versions.Count > 0 then
   begin
     NewestVer := SR.Versions[0].Version;
-    IsNew := (Pos('-', NewestVer) = 0);
+    IsNew := not PosNeutral('-', NewestVer);
     if Selected then
       Term.SetFG(clBlack)
     else if IsNew then
@@ -258,7 +260,7 @@ begin
     if I = FSel then ColorSelFG else ColorNormal;
     if I = FSel then Term.WriteStr(' > ') else Term.WriteStr('   ');
     Term.WriteStr(PadRight(Ver.Version, 20));
-    if Pos('-', Ver.Version) > 0 then
+    if PosNeutral('-', Ver.Version) then
     begin
       if I = FSel then Term.SetFG(clBlack) else ColorOld;
       Term.WriteStr(' pre-release');
@@ -411,7 +413,7 @@ var J: Integer;
 begin
   FShown.Clear;
   for J := 0 to FAllResults.Count - 1 do
-    if (FFilter = '') or (Pos(LowerCase(FFilter), LowerCase(FAllResults[J].Name)) > 0) then
+    if (FFilter = '') or PosNeutral(LowerCase(FFilter), LowerCase(FAllResults[J].Name)) then
       FShown.Add(FAllResults[J]);
 end;
 
@@ -514,7 +516,7 @@ begin
     kcBackspace: begin
       if Length(FFilter) > 0 then
       begin
-        Delete(FFilter, Length(FFilter), 1);
+        DeleteNeutral(FFilter, Length(FFilter) - 1, 1);
         if FSel >= FShown.Count then FSel := 0;
         BuildShown; FFilterFocused := True; Invalidate;
       end;

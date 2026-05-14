@@ -38,7 +38,8 @@ type
 implementation
 
 uses
-  Process;
+  Process,
+  TermUI.StringUtils;
 
 class function TCompilerBlaise.RunCompiler(const AArgs: array of string): string;
 var
@@ -100,12 +101,10 @@ begin
   Result := TCompilerOptionItem.Create;
   Result.Flag        := AFlag;
   Result.Description := ADesc;
-  LtPos := Pos('<', AFlag);
-  GtPos := Pos('>', AFlag);
-  if (LtPos > 0) and (GtPos > LtPos) then
+  if PosNeutral('<', AFlag, LtPos) and PosNeutral('>', AFlag, GtPos) and (GtPos > LtPos) then
   begin
     Result.HasArgument  := True;
-    Result.ArgumentHint := Copy(AFlag, LtPos, GtPos - LtPos + 1);
+    Result.ArgumentHint := CopyNeutral(AFlag, LtPos, GtPos - LtPos + 1);
   end
   else
     Result.HasArgument := False;
@@ -131,7 +130,7 @@ begin
       Line    := Lines[I];
       Trimmed := TrimLeft(Line);
 
-      if (Length(Trimmed) < 2) or (Trimmed[1] <> '-') or (Trimmed[2] <> '-') then
+      if (Length(Trimmed) < 2) or (Trimmed.Index[0] <> '-') or (Trimmed.Index[1] <> '-') then
         Continue;
 
       { split flag from description at first run of 2+ spaces }
@@ -142,7 +141,7 @@ begin
           Break;
         Inc(J);
       end;
-      Flag := TrimRight(Copy(Trimmed, 1, J - 1));
+      Flag := TrimRight(CopyNeutral(Trimmed, 0, J - 1));
 
       if (Flag = '') or (Flag = '--') then
         Continue;
@@ -150,7 +149,7 @@ begin
       SpacePos := J;
       while (SpacePos <= Length(Trimmed)) and (Trimmed[SpacePos] = ' ') do
         Inc(SpacePos);
-      Desc := Trim(Copy(Trimmed, SpacePos, MaxInt));
+      Desc := Trim(CopyNeutral(Trimmed, SpacePos - 1, MaxInt));
 
       AList.Add(MakeOption(Flag, Desc));
     end;
@@ -172,14 +171,11 @@ var
   VPos:  Integer;
 begin
   Raw  := RunCompiler([CBlaiseHelpFlag]);
-  EOL  := Pos(#10, Raw);
-  if EOL > 0 then Raw := Trim(Copy(Raw, 1, EOL - 1));
-  EOL  := Pos(#13, Raw);
-  if EOL > 0 then Raw := Trim(Copy(Raw, 1, EOL - 1));
+  if PosNeutral(#10, Raw, EOL) then Raw := Trim(CopyNeutral(Raw, 0, EOL));
+  if PosNeutral(#13, Raw, EOL) then Raw := Trim(CopyNeutral(Raw, 0, EOL));
   { first line is "Blaise Compiler v<ver>" }
-  VPos := Pos(' v', Raw);
-  if VPos > 0 then
-    Result := Copy(Raw, VPos + 2, MaxInt)
+  if PosNeutral(' v', Raw, VPos) then
+    Result := CopyNeutral(Raw, VPos + 2, MaxInt)
   else
     Result := '';
 end;

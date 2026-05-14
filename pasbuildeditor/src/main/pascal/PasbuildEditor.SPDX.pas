@@ -15,7 +15,7 @@ interface
 
 uses
   Classes, SysUtils,
-  TermUI.FilteredPicker;
+  TermUI.FilteredPicker, TermUI.StringUtils;
 
 { Populate AList with common SPDX identifiers and their descriptions. }
 procedure PopulateSPDXList(AList: TFilteredPickerItemList);
@@ -73,9 +73,9 @@ type
   var K: string;
   begin
     for K in Must do
-      if Pos(LowerCase(K), S) = 0 then Exit(False);
+      if not PosNeutral(LowerCase(K), S) then Exit(False);
     for K in MustNot do
-      if Pos(LowerCase(K), S) > 0 then Exit(False);
+      if PosNeutral(LowerCase(K), S) then Exit(False);
     Result := True;
   end;
 
@@ -86,83 +86,83 @@ type
     SetLength(Must, 0);
     SetLength(MustNot, 0);
 
-    if (Pos('agpl', S) > 0) and (Pos('3', S) > 0) then
+    if PosNeutral('agpl', S) and PosNeutral('3', S) then
     begin
       Must    := ['gnu affero general public license', 'version 3'];
     end
-    else if (Pos('gpl', S) > 0) and (Pos('3', S) > 0) then
+    else if PosNeutral('gpl', S) and PosNeutral('3', S) then
     begin
       Must    := ['gnu general public license', 'version 3'];
       MustNot := ['affero'];
     end
-    else if (Pos('gpl', S) > 0) and (Pos('2', S) > 0) then
+    else if PosNeutral('gpl', S) and PosNeutral('2', S) then
     begin
       Must    := ['gnu general public license', 'version 2'];
       MustNot := ['version 3', 'affero'];
     end
-    else if (Pos('lgpl', S) > 0) and (Pos('3', S) > 0) then
+    else if PosNeutral('lgpl', S) and PosNeutral('3', S) then
     begin
       Must    := ['gnu lesser general public license', 'version 3'];
     end
-    else if (Pos('lgpl', S) > 0) and (Pos('2.1', S) > 0) then
+    else if PosNeutral('lgpl', S) and PosNeutral('2.1', S) then
     begin
       Must    := ['gnu lesser general public license', '2.1'];
       MustNot := ['version 3'];
     end
-    else if (Pos('lgpl', S) > 0) and (Pos('2', S) > 0) then
+    else if PosNeutral('lgpl', S) and PosNeutral('2', S) then
     begin
       Must    := ['gnu library general public license', 'version 2'];
       MustNot := ['version 3', '2.1'];
     end
-    else if Pos('mpl', S) > 0 then
+    else if PosNeutral('mpl', S) then
     begin
       Must := ['mozilla public license'];
     end
-    else if (Pos('apache', S) > 0) and (Pos('swift', S) > 0) then
+    else if PosNeutral('apache', S) and PosNeutral('swift', S) then
     begin
       Must := ['apache license', 'swift'];
     end
-    else if Pos('apache', S) > 0 then
+    else if PosNeutral('apache', S) then
     begin
       Must    := ['apache license'];
       MustNot := ['swift'];
     end
-    else if Pos('mit', S) > 0 then
+    else if PosNeutral('mit', S) then
     begin
       Must    := ['permission is hereby granted', 'without restriction'];
       MustNot := ['redistribution'];
     end
-    else if (Pos('bsd-3', S) > 0) or (Pos('bsd 3', S) > 0) then
+    else if PosNeutral('bsd-3', S) or PosNeutral('bsd 3', S) then
     begin
       Must := ['redistribution', 'neither the name'];
     end
-    else if (Pos('bsd-2', S) > 0) or (Pos('bsd 2', S) > 0) then
+    else if PosNeutral('bsd-2', S) or PosNeutral('bsd 2', S) then
     begin
       Must    := ['redistribution'];
       MustNot := ['neither the name'];
     end
-    else if Pos('isc', S) > 0 then
+    else if PosNeutral('isc', S) then
     begin
       Must    := ['permission to use, copy, modify'];
       MustNot := ['redistribution'];
     end
-    else if Pos('artistic', S) > 0 then
+    else if PosNeutral('artistic', S) then
     begin
       Must := ['artistic license'];
     end
-    else if Pos('eupl', S) > 0 then
+    else if PosNeutral('eupl', S) then
     begin
       Must := ['european union public licence'];
     end
-    else if Pos('unlicense', S) > 0 then
+    else if PosNeutral('unlicense', S) then
     begin
       Must := ['this is free and unencumbered software'];
     end
-    else if Pos('cc0', S) > 0 then
+    else if PosNeutral('cc0', S) then
     begin
       Must := ['creative commons'];
     end
-    else if Pos('wtfpl', S) > 0 then
+    else if PosNeutral('wtfpl', S) then
     begin
       Must := ['do what the f'];
     end;

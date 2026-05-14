@@ -15,6 +15,7 @@ interface
 
 uses
   Classes, SysUtils, fgl,
+  TermUI.StringUtils,
   TermUI.Terminal, TermUI.Menu, TermUI.Forms, TermUI.Application;
 
 { ══════════════════════════════════════════════════════════════════════
@@ -116,7 +117,7 @@ begin
   end;
   Result := (ALevel >= 1) and (ALevel <= 4) and (I <= Length(S)) and (S[I] = ' ');
   if Result then
-    AText := Trim(Copy(S, I + 1, MaxInt))
+    AText := Trim(CopyNeutral(S, I, MaxInt))
   else
     ALevel := 0;
 end;
@@ -141,13 +142,13 @@ begin
       if W = '' then Continue;
       if Line = '' then
       begin
-        if Length(W) > AWidth then W := Copy(W, 1, AWidth);
+        if Length(W) > AWidth then W := CopyNeutral(W, 0, AWidth);
         Line := W;
       end
       else if Length(Line) + 1 + Length(W) > AWidth then
       begin
         AList.Add(TDisplayLine.Create(AKind, Line));
-        if Length(W) > AWidth then W := Copy(W, 1, AWidth);
+        if Length(W) > AWidth then W := CopyNeutral(W, 0, AWidth);
         Line := W;
       end
       else
@@ -205,10 +206,10 @@ begin
       Continue;
     end;
 
-    if (Length(S) > 0) and (S[1] = '[') then Continue;
+    if (Length(S) > 0) and (S.Index[0] = '[') then Continue;
     if S = '|===' then begin InTable := not InTable; Continue; end;
     if InTable then Continue;
-    if Copy(S, 1, 2) = '//' then Continue;
+    if CopyNeutral(S, 0, 2) = '//' then Continue;
 
     if Trim(S) = '' then
     begin
@@ -234,21 +235,21 @@ begin
       Continue;
     end;
 
-    if (Length(S) >= 2) and (S[1] in ['*', '-']) and (S[2] = ' ') then
+    if (Length(S) >= 2) and (S.Index[0] in ['*', '-']) and (S.Index[1] = ' ') then
     begin
-      AppendWrapped(Copy(S, 3, MaxInt), AContentWidth - 2, dlkBullet, ADisplay);
+      AppendWrapped(CopyNeutral(S, 2, MaxInt), AContentWidth - 2, dlkBullet, ADisplay);
       Continue;
     end;
 
-    if (Length(S) >= 2) and (S[1] = '.') and (S[2] = ' ') then
+    if (Length(S) >= 2) and (S.Index[0] = '.') and (S.Index[1] = ' ') then
     begin
-      AppendWrapped(Copy(S, 3, MaxInt), AContentWidth - 2, dlkBullet, ADisplay);
+      AppendWrapped(CopyNeutral(S, 2, MaxInt), AContentWidth - 2, dlkBullet, ADisplay);
       Continue;
     end;
 
-    if (Length(S) > 0) and (S[1] = '|') then
+    if (Length(S) > 0) and (S.Index[0] = '|') then
     begin
-      Push(dlkPara, Copy(S, 2, MaxInt));
+      Push(dlkPara, CopyNeutral(S, 1, MaxInt));
       Continue;
     end;
 
@@ -341,7 +342,7 @@ var
     for J := 0 to FTOCCount - 1 do
       if SameText(FTOC[J].Heading, AKey) then begin Result := J; Exit; end;
     for J := 0 to FTOCCount - 1 do
-      if Pos(LowerCase(AKey), LowerCase(FTOC[J].Heading)) > 0 then begin Result := J; Exit; end;
+      if PosNeutral(LowerCase(AKey), LowerCase(FTOC[J].Heading)) then begin Result := J; Exit; end;
   end;
 
 begin
@@ -410,7 +411,7 @@ begin
   if (ATOCIdx < 0) or (ATOCIdx >= FTOCCount) then Exit;
   IsSel := (ATOCIdx = FTOCSel);
   Txt := FTOC[ATOCIdx].Heading;
-  if Length(Txt) > TOC_W - 3 then Txt := Copy(Txt, 1, TOC_W - 4) + '…';
+  if Length(Txt) > TOC_W - 3 then Txt := CopyNeutral(Txt, 0, TOC_W - 4) + '…';
   if IsSel then
   begin
     if FFocusTOC then begin Term.SetFG(clBlack); Term.SetBG(clCyan); end
@@ -450,16 +451,16 @@ begin
   case DL.Kind of
     dlkBlank: ;
     dlkRule:   begin Term.SetFG(clBrightBlack);  Term.WriteStr(StringOfChar('-', W)); Term.ResetColors; end;
-    dlkH1:     begin Term.SetFG(clBrightCyan);   Term.WriteStr(Copy(DL.Text, 1, W)); Term.ResetColors; end;
-    dlkH2:     begin Term.SetFG(clBrightYellow); Term.SetUnderline(True); Term.WriteStr(Copy(DL.Text, 1, W)); Term.SetUnderline(False); Term.ResetColors; end;
-    dlkH3:     begin Term.SetFG(clBrightGreen);  Term.WriteStr(Copy(DL.Text, 1, W)); Term.ResetColors; end;
-    dlkH4:     begin Term.SetFG(clGreen);        Term.WriteStr(Copy(DL.Text, 1, W)); Term.ResetColors; end;
-    dlkCode:   begin Term.SetFG(clBrightBlack);  Term.WriteStr(Copy(DL.Text, 1, W)); Term.ResetColors; end;
+    dlkH1:     begin Term.SetFG(clBrightCyan);   Term.WriteStr(CopyNeutral(DL.Text, 0, W)); Term.ResetColors; end;
+    dlkH2:     begin Term.SetFG(clBrightYellow); Term.SetUnderline(True); Term.WriteStr(CopyNeutral(DL.Text, 0, W)); Term.SetUnderline(False); Term.ResetColors; end;
+    dlkH3:     begin Term.SetFG(clBrightGreen);  Term.WriteStr(CopyNeutral(DL.Text, 0, W)); Term.ResetColors; end;
+    dlkH4:     begin Term.SetFG(clGreen);        Term.WriteStr(CopyNeutral(DL.Text, 0, W)); Term.ResetColors; end;
+    dlkCode:   begin Term.SetFG(clBrightBlack);  Term.WriteStr(CopyNeutral(DL.Text, 0, W)); Term.ResetColors; end;
     dlkBullet: begin
       Term.SetFG(clBrightYellow); Term.WriteStr('• '); Term.ResetColors;
-      RenderInline(Copy(DL.Text, 1, W - 2), W - 2);
+      RenderInline(CopyNeutral(DL.Text, 0, W - 2), W - 2);
     end;
-    dlkPara: RenderInline(Copy(DL.Text, 1, W), W);
+    dlkPara: RenderInline(CopyNeutral(DL.Text, 0, W), W);
   end;
 end;
 

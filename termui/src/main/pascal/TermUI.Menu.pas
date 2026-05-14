@@ -15,6 +15,7 @@ interface
 
 uses
   Classes, SysUtils, StrUtils, fgl,
+  TermUI.StringUtils,
   TermUI.Terminal, TermUI.Control, TermUI.Forms, TermUI.Application;
 
 type
@@ -171,7 +172,7 @@ begin
       S := Result + Sep + AList[I];
     if Length(S) > MaxLen then
     begin
-      Result := Copy(Result, 1, MaxLen - 1) + '…';
+      Result := CopyNeutral(Result, 0, MaxLen - 1) + '…';
       Exit;
     end;
     Result := S;
@@ -200,7 +201,7 @@ var I: Integer;
 begin
   Result := False;
   if S = '' then Exit;
-  if not (S[1] in ['A'..'Z', 'a'..'z', '_']) then Exit;
+  if not (S.Index[0] in ['A'..'Z', 'a'..'z', '_']) then Exit;
   for I := 2 to Length(S) do
     if not (S[I] in ['A'..'Z', 'a'..'z', '0'..'9', '_']) then Exit;
   Result := True;
@@ -225,7 +226,7 @@ begin
     BCLen    := Length(BC);
     if BCLen > MaxBC then
     begin
-      BC    := '…' + Copy(BC, BCLen - MaxBC + 2, MaxBC - 1);
+      BC    := '…' + CopyNeutral(BC, BCLen - MaxBC + 1, MaxBC - 1);
     end;
     Term.SetFG(clBrightBlack);
     Term.WriteStr('[');
@@ -244,26 +245,26 @@ procedure WriteLabelWithHotkey(const ALabel: string; AHotkey: Char;
 var
   HKPos, Written, I: Integer;
 begin
-  HKPos := 0;
+  HKPos := -1;
   if AHotkey <> #0 then
-    HKPos := Pos(UpCase(AHotkey), UpperCase(ALabel));
+    PosNeutral(UpCase(AHotkey), UpperCase(ALabel), HKPos);
 
   Written := 0;
-  if HKPos > 0 then
+  if HKPos >= 0 then
   begin
-    for I := 1 to Length(ALabel) do
+    for I := 0 to Length(ALabel) - 1 do
     begin
       if I = HKPos then
       begin
         { Hotkey letter: underline + colour; colour alone on platforms without underline }
         ColorHotkey;
         Term.SetUnderline(True);
-        Term.WriteStr(ALabel[I]);
+        Term.WriteStr(ALabel.Index[I]);
         Term.SetUnderline(False);
         if IsSel then ColorSelFG else ColorNormal;
       end
       else
-        Term.WriteStr(ALabel[I]);
+        Term.WriteStr(ALabel.Index[I]);
       Inc(Written);
     end;
   end
@@ -286,7 +287,7 @@ begin
   while Length(Result) < Width do
     Result := Result + ' ';
   if Length(Result) > Width then
-    Result := Copy(Result, 1, Width);
+    Result := CopyNeutral(Result, 0, Width);
 end;
 
 { ══════════════════════════════════════════════════════════════════════
@@ -315,17 +316,18 @@ constructor TMenuItem.CreateEmbeddedHotkey(
   AHint: string
 );
 var
-  HotkeyPos: SizeInt;
+  HotkeyPos: Integer;
   CleanLabel: string;
   HotkeyChar: Char;
 begin
-  HotkeyPos := Pos('&', ALabel);
+  if not PosNeutral('&', ALabel, HotkeyPos) then
+    HotkeyPos := -1;
 
-  if (HotkeyPos > 0) and (HotkeyPos < Length(ALabel)) then
+  if (HotkeyPos >= 0) and (HotkeyPos < Length(ALabel) - 1) then
   begin
     CleanLabel := ALabel;
-    Delete(CleanLabel, HotkeyPos, 1);
-    HotkeyChar := UpCase(CleanLabel[HotkeyPos]);
+    DeleteNeutral(CleanLabel, HotkeyPos, 1);
+    HotkeyChar := UpCase(CleanLabel.Index[HotkeyPos]);
   end
   else
   begin
@@ -542,7 +544,7 @@ begin
     Term.SetFG(clBrightBlack);
     DescMax := Term.Width - 2;
     if Length(Desc) > DescMax then
-      Desc := Copy(Desc, 1, DescMax - 1) + '…';
+      Desc := CopyNeutral(Desc, 0, DescMax - 1) + '…';
     Term.WriteStr(' ' + Desc);
     Term.ResetColors;
   end;
@@ -785,7 +787,7 @@ begin
   Term.SetFG(clBrightYellow);
   Term.WriteStr(' ' + FPrompt + ': ');
   Term.SetFG(clWhite);
-  Term.WriteStr(Copy(FBuf, FScroll + 1, FFieldW));
+  Term.WriteStr(CopyNeutral(FBuf, FScroll, FFieldW));
   Term.ClearToEOL;
   Term.ResetColors;
   Term.ShowCursor;
@@ -806,9 +808,9 @@ begin
     kcCtrlLeft:  begin FCur := WordLeft;              Invalidate; end;
     kcCtrlRight: begin FCur := WordRight;             Invalidate; end;
     kcBackspace:
-      if FCur > 1 then begin Delete(FBuf, FCur - 1, 1); Dec(FCur); Invalidate; end;
+      if FCur > 1 then begin DeleteNeutral(FBuf, FCur - 2, 1); Dec(FCur); Invalidate; end;
     kcDelete:
-      if FCur <= Length(FBuf) then begin Delete(FBuf, FCur, 1); Invalidate; end;
+      if FCur <= Length(FBuf) then begin DeleteNeutral(FBuf, FCur - 1, 1); Invalidate; end;
     kcChar:
       if Key.Ch >= ' ' then begin Insert(Key.Ch, FBuf, FCur); Inc(FCur); Invalidate; end;
     else
