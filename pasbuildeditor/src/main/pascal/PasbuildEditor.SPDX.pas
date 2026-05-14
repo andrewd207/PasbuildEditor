@@ -31,6 +31,7 @@ procedure PopulateSPDXList(AList: TFilteredPickerItemList);
 begin
   AList.Add(TFilteredPickerItem.Create('MIT',                           'MIT License'));
   AList.Add(TFilteredPickerItem.Create('Apache-2.0',                    'Apache License 2.0'));
+  AList.Add(TFilteredPickerItem.Create('Apache-2.0 WITH Swift-exception', 'Apache License 2.0 with Swift Runtime Library Exception'));
   AList.Add(TFilteredPickerItem.Create('GPL-2.0-only',                  'GNU General Public License v2.0 only'));
   AList.Add(TFilteredPickerItem.Create('GPL-2.0-or-later',              'GNU General Public License v2.0 or later'));
   AList.Add(TFilteredPickerItem.Create('GPL-3.0-only',                  'GNU General Public License v3.0 only'));
@@ -117,9 +118,14 @@ type
     begin
       Must := ['mozilla public license'];
     end
+    else if (Pos('apache', S) > 0) and (Pos('swift', S) > 0) then
+    begin
+      Must := ['apache license', 'swift'];
+    end
     else if Pos('apache', S) > 0 then
     begin
-      Must := ['apache license'];
+      Must    := ['apache license'];
+      MustNot := ['swift'];
     end
     else if Pos('mit', S) > 0 then
     begin
