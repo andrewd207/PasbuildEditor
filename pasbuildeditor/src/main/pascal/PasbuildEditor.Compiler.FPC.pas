@@ -29,6 +29,8 @@ type
     class function RunCompiler(const AArgs: array of string): string;
     class procedure ParseHelpOutput(const AText: string; AList: TCompilerOptionsList);
     class function MakeOption(const AFlag, ADesc: string): TCompilerOptionItem;
+    { For options that say "see fpc -i<Suffix>", expand into concrete sub-options. }
+    class procedure ExpandSubOptions(AList: TCompilerOptionsList);
   end;
 
 implementation
@@ -165,6 +167,85 @@ begin
   end;
 end;
 
+{ Scan AList for options whose description contains "fpc -i<X> for possible values".
+  For each such option, run "fpc -i<X>", parse the value list, and insert a concrete
+  combined option (flag + value, e.g. "-CpATHLON64") after the generic one for each value.
+  The original generic option (e.g. "-Cp<x>") is left in the list as well. }
+class procedure TCompilerFPC.ExpandSubOptions(AList: TCompilerOptionsList);
+const
+  CMarker = 'fpc -i';
+var
+  I:          Integer;
+  Item:       TCompilerOptionItem;
+  Desc:       string;
+  MarkerIdx:  Integer;
+  ScanPos:    Integer;
+  Suffix:     string;
+  FlagBase:   string;
+  LtIdx:      Integer;
+  SubText:    string;
+  SubLines:   TStringList;
+  J:          Integer;
+  Value:      string;
+  InsertAt:   Integer;
+begin
+  I := 0;
+  while I < AList.Count do
+  begin
+    Item := AList[I];
+    Desc := Item.Description;
+    if not PosNeutral(CMarker, Desc, MarkerIdx) then
+    begin
+      Inc(I);
+      Continue;
+    end;
+
+    { extract the letter(s) following "fpc -i" — e.g. 'c' from "fpc -ic" }
+    ScanPos := MarkerIdx + Length(CMarker);
+    Suffix  := '';
+    while (ScanPos < Length(Desc)) and (Desc.Index[ScanPos] in ['a'..'z', 'A'..'Z']) do
+    begin
+      Suffix  := Suffix + Desc.Index[ScanPos];
+      ScanPos := ScanPos + 1;
+    end;
+
+    if Suffix = '' then
+    begin
+      Inc(I);
+      Continue;
+    end;
+
+    { derive the flag prefix by stripping the "<x>" placeholder }
+    FlagBase := Item.Flag;
+    if PosNeutral('<', FlagBase, LtIdx) then
+      FlagBase := CopyNeutral(FlagBase, 0, LtIdx);
+
+    SubText := RunCompiler(['-i' + Suffix]);
+    if SubText = '' then
+    begin
+      Inc(I);
+      Continue;
+    end;
+
+    InsertAt := I + 1;
+    SubLines := TStringList.Create;
+    try
+      SubLines.Text := SubText;
+      for J := 0 to SubLines.Count - 1 do
+      begin
+        Value := Trim(SubLines[J]);
+        if Value = '' then Continue;
+        AList.Insert(InsertAt, MakeOption(FlagBase + Value, Item.Description));
+        InsertAt := InsertAt + 1;
+      end;
+    finally
+      SubLines.Free;
+    end;
+    { jump past the generic option and all the inserted concrete ones }
+    I := InsertAt;
+  end;
+end;
+
 class function TCompilerFPC.Name: string;
 begin
   Result := 'Free Pascal Compiler';
@@ -190,7 +271,10 @@ begin
   AList.Clear;
   HelpText := RunCompiler([CFPCHelpFlag]);
   if HelpText <> '' then
-    ParseHelpOutput(HelpText, AList)
+  begin
+    ParseHelpOutput(HelpText, AList);
+    ExpandSubOptions(AList);
+  end
   else
     BasicOptions(AList);
 end;
