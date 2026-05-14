@@ -62,8 +62,8 @@ type
   end;
 
 const
-  KNOWN_CONDITIONS: array[0..5] of string = (
-    'LINUX', 'DARWIN', 'WINDOWS', 'FREEBSD', 'NETBSD', 'OPENBSD');
+  KNOWN_CONDITIONS: array[0..6] of string = (
+    'LINUX', 'DARWIN', 'WINDOWS', 'FREEBSD', 'NETBSD', 'OPENBSD', 'UNIX');
 
 constructor TConditionPickerForm.Create(const ATitle: string);
 begin
