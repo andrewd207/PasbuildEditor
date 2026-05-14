@@ -63,7 +63,7 @@ begin
 
       if LastLabel <> '' then Menu.SelectByLabel(LastLabel);
       Sel := Menu.Run;
-      case CheckGlobalKeys(Menu, Ctx, Sel) of
+      case CheckGlobalKeys(Ctx) of
         gkContinue: Continue;
         gkBreak:    Break;
       end;
@@ -193,7 +193,7 @@ begin
       Menu.Add(TMenuItem.Create('Add blank profile', nil));
 
       Sel := Menu.Run;
-      case CheckGlobalKeys(Menu, Ctx, Sel) of
+      case CheckGlobalKeys(Ctx) of
         gkContinue: Continue;
         gkBreak:    Break;
       end;

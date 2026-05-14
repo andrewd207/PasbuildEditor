@@ -25,13 +25,9 @@ type
   TGlobalKeyResult = (gkUnhandled, gkContinue, gkBreak);
 
 { Handle the standard post-Menu.Run checks shared by every page loop:
-  F1 help, F2 about, Ctrl-S save, and quit signals.
-  Does NOT handle the (Sel = nil) → break case; each caller manages nil
-  because the exact break/exit/continue behaviour differs per page.
-  AHelpDoc is the adoc document name passed to ShowHelpPage (e.g. 'build').
-  Pass '' if the page has no dedicated help document. }
-function CheckGlobalKeys(Menu: TMenu; Ctx: TUIContext; Sel: TMenuItem;
-  const AHelpDoc: string = ''): TGlobalKeyResult;
+  Ctrl-S save and quit signals. F1/F2 are now handled by the global key router
+  and do not reach individual page loops. }
+function CheckGlobalKeys(Ctx: TUIContext): TGlobalKeyResult;
 
 { Install the application key handler into Application.OnKeyDown.
   Call once during startup (before entering the UI loop).
@@ -42,6 +38,7 @@ implementation
 
 uses
   SysUtils,
+  TermUI.Forms,
   PasbuildEditor.Page.ShowHelp,
   PasbuildEditor.Dialog.About;
 
@@ -53,9 +50,21 @@ type
   end;
 
 function TGlobalKeyRouter.HandleKey(Sender: TObject; var Key: TKeyEvent): Boolean;
+var
+  AF: TForm;
 begin
   Result := False;
   case Key.Code of
+    kcF1: begin
+      AF := Application.ActiveForm;
+      if AF is TMenu then
+        ShowHelpPage(TMenu(AF).HelpDoc, TMenu(AF).SelectedLabel);
+      Result := True;
+    end;
+    kcF2: begin
+      ShowAboutPage;
+      Result := True;
+    end;
     kcCtrlC: begin
       GCtrlCRequested := True;
       GQuitRequested  := True;
@@ -87,22 +96,8 @@ end;
 
 { ── CheckGlobalKeys ── }
 
-function CheckGlobalKeys(Menu: TMenu; Ctx: TUIContext; Sel: TMenuItem;
-  const AHelpDoc: string): TGlobalKeyResult;
+function CheckGlobalKeys(Ctx: TUIContext): TGlobalKeyResult;
 begin
-  if Menu.F1Pressed then
-  begin
-    if Sel <> nil then
-      ShowHelpPage(AHelpDoc, Sel.Label_)
-    else
-      ShowHelpPage(AHelpDoc, '');
-    Exit(gkContinue);
-  end;
-  if Menu.F2Pressed then
-  begin
-    ShowAboutPage;
-    Exit(gkContinue);
-  end;
   if GSaveRequested then
   begin
     Ctx.SaveProject;

@@ -188,7 +188,77 @@ end;
 
 function TUnixTerminal.ReadKey: TKeyEvent;
 var
-  B, B2, B3, B4, B5, Bx: Byte;
+  B, B2: Byte;
+  Params: string;
+  Final:  Byte;
+  P1, P2: Integer;
+
+  { Read CSI parameter bytes (digits, semicolons, and other non-final bytes)
+    until a final byte: @, A–Z, a–z, or ~.  Returns the final in AFinal. }
+  function ReadCSIParams(out AFinal: Byte): string;
+  var Bn: Byte;
+  begin
+    Result := '';
+    AFinal := 0;
+    while ReadByte(Bn, 50) do
+    begin
+      if (Bn = Ord('~')) or
+         ((Bn >= Ord('@')) and (Bn <= Ord('Z'))) or
+         ((Bn >= Ord('a')) and (Bn <= Ord('z'))) then
+      begin
+        AFinal := Bn;
+        Exit;
+      end;
+      Result := Result + Chr(Bn);
+    end;
+  end;
+
+  { Parse 'N' or 'N;M' into AP1/AP2; missing parts default to 0. }
+  procedure ParseParams(const S: string; out AP1, AP2: Integer);
+  var Sep: Integer;
+  begin
+    AP1 := 0; AP2 := 0;
+    Sep := Pos(';', S);
+    if Sep = 0 then
+    begin
+      if S <> '' then AP1 := StrToIntDef(S, 0);
+    end
+    else
+    begin
+      AP1 := StrToIntDef(Copy(S, 1, Sep - 1), 0);
+      AP2 := StrToIntDef(Copy(S, Sep + 1, MaxInt), 0);
+    end;
+  end;
+
+  { Map a base directional key code with an xterm modifier number (P2).
+    Modifier: 2=Shift, 3=Alt, 5=Ctrl; 0/1 = plain (returns ABase). }
+  function ModKey(ABase: TKeyCode; AMod: Integer): TKeyCode;
+  begin
+    Result := ABase;
+    case AMod of
+      2: case ABase of
+           kcUp:    Result := kcShiftUp;
+           kcDown:  Result := kcShiftDown;
+           kcLeft:  Result := kcShiftLeft;
+           kcRight: Result := kcShiftRight;
+         end;
+      3: case ABase of
+           kcUp:    Result := kcAltUp;
+           kcDown:  Result := kcAltDown;
+           kcLeft:  Result := kcAltLeft;
+           kcRight: Result := kcAltRight;
+         end;
+      5: case ABase of
+           kcUp:    Result := kcCtrlUp;
+           kcDown:  Result := kcCtrlDown;
+           kcLeft:  Result := kcCtrlLeft;
+           kcRight: Result := kcCtrlRight;
+           kcHome:  Result := kcCtrlHome;
+           kcEnd:   Result := kcCtrlEnd;
+         end;
+    end;
+  end;
+
 begin
   Result.Code := kcNone;
   Result.Ch   := #0;
@@ -196,61 +266,107 @@ begin
   if not ReadByte(B) then Exit;
 
   case B of
-    3:  Result.Code := kcCtrlC;
-    19: Result.Code := kcCtrlS;
-    24: Result.Code := kcCtrlX;
+    1:   Result.Code := kcCtrlA;
+    2:   Result.Code := kcCtrlB;
+    3:   Result.Code := kcCtrlC;
+    4:   Result.Code := kcCtrlD;
+    5:   Result.Code := kcCtrlE;
+    6:   Result.Code := kcCtrlF;
+    7:   Result.Code := kcCtrlG;
+    8:   Result.Code := kcBackspace;   { Ctrl+H }
+    9:   Result.Code := kcTab;         { Ctrl+I }
+    10:  Result.Code := kcEnter;       { Ctrl+J / LF }
+    11:  Result.Code := kcCtrlK;
+    12:  Result.Code := kcCtrlL;
+    13:  Result.Code := kcEnter;       { Ctrl+M / CR }
+    14:  Result.Code := kcCtrlN;
+    15:  Result.Code := kcCtrlO;
+    16:  Result.Code := kcCtrlP;
+    17:  Result.Code := kcCtrlQ;
+    18:  Result.Code := kcCtrlR;
+    19:  Result.Code := kcCtrlS;
+    20:  Result.Code := kcCtrlT;
+    21:  Result.Code := kcCtrlU;
+    22:  Result.Code := kcCtrlV;
+    23:  Result.Code := kcCtrlW;
+    24:  Result.Code := kcCtrlX;
+    25:  Result.Code := kcCtrlY;
+    26:  Result.Code := kcCtrlZ;
     27: begin
-      if not ReadByte(B2, 50) then
-      begin
-        Result.Code := kcEscape;
-        Exit;
-      end;
-      if B2 = Ord('O') then
-      begin
-        if ReadByte(B3, 50) then
-          case B3 of
-            Ord('P'): Result.Code := kcF1;
-            Ord('Q'): Result.Code := kcF2;
+      if not ReadByte(B2, 50) then begin Result.Code := kcEscape; Exit; end;
+      case B2 of
+        Ord('O'): begin
+          { SS3 sequences: ESC O P/Q/R/S = F1-F4; A/B/C/D/H/F = arrows/home/end }
+          if ReadByte(B2, 50) then
+            case B2 of
+              Ord('P'): Result.Code := kcF1;
+              Ord('Q'): Result.Code := kcF2;
+              Ord('R'): Result.Code := kcF3;
+              Ord('S'): Result.Code := kcF4;
+              Ord('A'): Result.Code := kcUp;
+              Ord('B'): Result.Code := kcDown;
+              Ord('C'): Result.Code := kcRight;
+              Ord('D'): Result.Code := kcLeft;
+              Ord('H'): Result.Code := kcHome;
+              Ord('F'): Result.Code := kcEnd;
+            end;
+        end;
+        Ord('['): begin
+          Params := ReadCSIParams(Final);
+          if Final = 0 then Exit;
+          ParseParams(Params, P1, P2);
+
+          { Linux console F1–F5: ESC [ [ A–E (Params accumulates '[') }
+          if (Params = '[') and (Final >= Ord('A')) and (Final <= Ord('E')) then
+          begin
+            Result.Code := TKeyCode(Ord(kcF1) + (Final - Ord('A')));
+            Exit;
           end;
-      end
-      else if B2 = Ord('[') then
-      begin
-        if not ReadByte(B3, 50) then Exit;
-        case B3 of
-          Ord('A'): Result.Code := kcUp;
-          Ord('B'): Result.Code := kcDown;
-          Ord('C'): Result.Code := kcRight;
-          Ord('D'): Result.Code := kcLeft;
-          Ord('H'): Result.Code := kcHome;
-          Ord('F'): Result.Code := kcEnd;
-          Ord('5'): begin ReadByte(Bx, 50); Result.Code := kcPageUp; end;
-          Ord('6'): begin ReadByte(Bx, 50); Result.Code := kcPageDown; end;
-          Ord('3'): begin ReadByte(Bx, 50); Result.Code := kcDelete; end;
-          Ord('1'): begin
-            { ESC [ 1 ; 5 C  = Ctrl+Right,  ESC [ 1 ; 5 D = Ctrl+Left }
-            if ReadByte(B4, 50) and (B4 = Ord(';')) and
-               ReadByte(B5, 50) and (B5 = Ord('5')) and
-               ReadByte(Bx, 50) then
-            begin
-              if Bx = Ord('C') then Result.Code := kcCtrlRight
-              else if Bx = Ord('D') then Result.Code := kcCtrlLeft;
+
+          case Chr(Final) of
+            'A': Result.Code := ModKey(kcUp,    P2);
+            'B': Result.Code := ModKey(kcDown,  P2);
+            'C': Result.Code := ModKey(kcRight, P2);
+            'D': Result.Code := ModKey(kcLeft,  P2);
+            'H': Result.Code := ModKey(kcHome,  P2);
+            'F': Result.Code := ModKey(kcEnd,   P2);
+            'Z': Result.Code := kcShiftTab;
+            { SS3 F-key letters when sent as CSI instead of SS3 }
+            'P': Result.Code := kcF1;
+            'Q': Result.Code := kcF2;
+            'R': Result.Code := kcF3;
+            'S': Result.Code := kcF4;
+            '~': case P1 of
+              1:  Result.Code := ModKey(kcHome, P2);
+              2:  Result.Code := kcInsert;
+              3:  Result.Code := kcDelete;
+              4:  Result.Code := ModKey(kcEnd, P2);
+              5:  Result.Code := kcPageUp;
+              6:  Result.Code := kcPageDown;
+              7:  Result.Code := kcHome;
+              8:  Result.Code := kcEnd;
+              11: Result.Code := kcF1;
+              12: Result.Code := kcF2;
+              13: Result.Code := kcF3;
+              14: Result.Code := kcF4;
+              15: Result.Code := kcF5;
+              17: Result.Code := kcF6;
+              18: Result.Code := kcF7;
+              19: Result.Code := kcF8;
+              20: Result.Code := kcF9;
+              21: Result.Code := kcF10;
+              23: Result.Code := kcF11;
+              24: Result.Code := kcF12;
+              25: Result.Code := kcF13;
+              26: Result.Code := kcF14;
             end;
           end;
-          Ord('['): begin
-            if ReadByte(B4, 50) then
-              case B4 of
-                Ord('A'): Result.Code := kcF1;
-                Ord('B'): Result.Code := kcF2;
-              end;
-          end;
         end;
-      end
-      else
-        Result.Code := kcEscape;
+        else
+          Result.Code := kcEscape;
+      end;
     end;
-    13, 10: Result.Code := kcEnter;
-    127, 8: Result.Code := kcBackspace;
-    9:      Result.Code := kcTab;
+    127: Result.Code := kcBackspace;
     else begin
       Result.Code := kcChar;
       Result.Ch   := Char(B);

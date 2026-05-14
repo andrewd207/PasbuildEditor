@@ -438,12 +438,13 @@ begin
         end;
         GoalMenu.AddHeader('Other');
         GoalMenu.Add(TMenuItem.Create('(custom)', nil, '', 'M'));
+        GoalMenu.HelpDoc := 'run_build';
         if LastGoalLabel <> '' then GoalMenu.SelectByLabel(LastGoalLabel);
         GoalSel := GoalMenu.Run;
         GCtrlCRequested := False;
         GCtrlXRequested := False;
         if Assigned(GoalSel) then LastGoalLabel := GoalSel.Label_;
-        if CheckGlobalKeys(GoalMenu, Ctx, GoalSel, 'run_build') = gkContinue then Continue;
+        if CheckGlobalKeys(Ctx) = gkContinue then Continue;
         if Application.Terminated or (GoalSel = nil) then Exit;
         if GoalSel.Value <> '' then
           Goal := GoalSel.Value

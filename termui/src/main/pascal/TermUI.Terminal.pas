@@ -16,16 +16,32 @@ interface
 type
   TKeyCode = (
     kcNone,
+    { Plain arrows }
     kcUp, kcDown, kcLeft, kcRight,
-    kcCtrlLeft, kcCtrlRight,
+    { Shift+arrows }
+    kcShiftUp, kcShiftDown, kcShiftLeft, kcShiftRight,
+    { Alt+arrows }
+    kcAltUp, kcAltDown, kcAltLeft, kcAltRight,
+    { Ctrl+arrows }
+    kcCtrlUp, kcCtrlDown, kcCtrlLeft, kcCtrlRight,
+    { Navigation cluster }
+    kcHome, kcEnd, kcPageUp, kcPageDown, kcInsert,
+    kcCtrlHome, kcCtrlEnd,
+    { Editing }
     kcEnter, kcEscape, kcBackspace, kcDelete,
-    kcHome, kcEnd, kcPageUp, kcPageDown, kcTab,
+    { Tab }
+    kcTab, kcShiftTab,
+    { Printable character — Key.Ch holds the char }
     kcChar,
-    kcCtrlC,  // Ctrl+C
-    kcCtrlS,  // Ctrl+S — save
-    kcCtrlX,  // Ctrl+X — save and exit
-    kcF1,
-    kcF2
+    { Ctrl+letter.  Ctrl+H/I/J/M/[ are already kcBackspace/kcTab/kcEnter/kcEscape. }
+    kcCtrlA, kcCtrlB, kcCtrlC, kcCtrlD, kcCtrlE, kcCtrlF, kcCtrlG,
+    kcCtrlK, kcCtrlL,
+    kcCtrlN, kcCtrlO, kcCtrlP, kcCtrlQ, kcCtrlR,
+    kcCtrlS, kcCtrlT, kcCtrlU, kcCtrlV, kcCtrlW,
+    kcCtrlX, kcCtrlY, kcCtrlZ,
+    { Function keys F1–F14 }
+    kcF1, kcF2, kcF3, kcF4, kcF5, kcF6, kcF7,
+    kcF8, kcF9, kcF10, kcF11, kcF12, kcF13, kcF14
   );
 
   TKeyEvent = record

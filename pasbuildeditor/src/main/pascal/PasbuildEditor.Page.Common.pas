@@ -128,10 +128,11 @@ begin
         It.Desc := SDescModuleDeps; Menu.Add(It);
       end;
 
+      Menu.HelpDoc := 'build';
       if LastLabel <> '' then Menu.SelectByLabel(LastLabel);
       Sel := Menu.Run;
 
-      case CheckGlobalKeys(Menu, Ctx, Sel, 'build') of
+      case CheckGlobalKeys(Ctx) of
         gkContinue: Continue;
         gkBreak:    Break;
       end;

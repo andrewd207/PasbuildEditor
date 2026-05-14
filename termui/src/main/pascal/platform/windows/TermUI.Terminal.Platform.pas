@@ -202,9 +202,12 @@ end;
 
 function TWindowsTerminal.ReadKey: TKeyEvent;
 var
-  Rec:   INPUT_RECORD;
-  Count: DWORD;
-  KE:    KEY_EVENT_RECORD absolute Rec.Event;
+  Rec:    INPUT_RECORD;
+  Count:  DWORD;
+  KE:     KEY_EVENT_RECORD absolute Rec.Event;
+  Ctrl:   Boolean;
+  Shift:  Boolean;
+  Alt:    Boolean;
 begin
   Result.Code := kcNone;
   Result.Ch   := #0;
@@ -218,31 +221,82 @@ begin
     end;
     if (Rec.EventType <> KEY_EVENT) or not KE.bKeyDown then
       Continue;
+
+    Ctrl  := (KE.dwControlKeyState and (LEFT_CTRL_PRESSED  or RIGHT_CTRL_PRESSED))  <> 0;
+    Shift := (KE.dwControlKeyState and SHIFT_PRESSED) <> 0;
+    Alt   := (KE.dwControlKeyState and (LEFT_ALT_PRESSED or RIGHT_ALT_PRESSED)) <> 0;
+
     case KE.wVirtualKeyCode of
-      VK_UP:     Result.Code := kcUp;
-      VK_DOWN:   Result.Code := kcDown;
-      VK_LEFT:   Result.Code := kcLeft;
-      VK_RIGHT:  Result.Code := kcRight;
-      VK_RETURN: Result.Code := kcEnter;
-      VK_ESCAPE: Result.Code := kcEscape;
-      VK_BACK:   Result.Code := kcBackspace;
-      VK_DELETE: Result.Code := kcDelete;
-      VK_HOME:   Result.Code := kcHome;
-      VK_END:    Result.Code := kcEnd;
-      VK_PRIOR:  Result.Code := kcPageUp;
-      VK_NEXT:   Result.Code := kcPageDown;
-      VK_TAB:    Result.Code := kcTab;
+      VK_UP:    if Ctrl then Result.Code := kcCtrlUp
+                else if Shift then Result.Code := kcShiftUp
+                else if Alt   then Result.Code := kcAltUp
+                else               Result.Code := kcUp;
+      VK_DOWN:  if Ctrl then Result.Code := kcCtrlDown
+                else if Shift then Result.Code := kcShiftDown
+                else if Alt   then Result.Code := kcAltDown
+                else               Result.Code := kcDown;
+      VK_LEFT:  if Ctrl then Result.Code := kcCtrlLeft
+                else if Shift then Result.Code := kcShiftLeft
+                else if Alt   then Result.Code := kcAltLeft
+                else               Result.Code := kcLeft;
+      VK_RIGHT: if Ctrl then Result.Code := kcCtrlRight
+                else if Shift then Result.Code := kcShiftRight
+                else if Alt   then Result.Code := kcAltRight
+                else               Result.Code := kcRight;
+      VK_HOME:  if Ctrl then Result.Code := kcCtrlHome else Result.Code := kcHome;
+      VK_END:   if Ctrl then Result.Code := kcCtrlEnd  else Result.Code := kcEnd;
+      VK_RETURN:  Result.Code := kcEnter;
+      VK_ESCAPE:  Result.Code := kcEscape;
+      VK_BACK:    Result.Code := kcBackspace;
+      VK_DELETE:  Result.Code := kcDelete;
+      VK_INSERT:  Result.Code := kcInsert;
+      VK_PRIOR:   Result.Code := kcPageUp;
+      VK_NEXT:    Result.Code := kcPageDown;
+      VK_TAB:     if Shift then Result.Code := kcShiftTab else Result.Code := kcTab;
+      VK_F1:  Result.Code := kcF1;
+      VK_F2:  Result.Code := kcF2;
+      VK_F3:  Result.Code := kcF3;
+      VK_F4:  Result.Code := kcF4;
+      VK_F5:  Result.Code := kcF5;
+      VK_F6:  Result.Code := kcF6;
+      VK_F7:  Result.Code := kcF7;
+      VK_F8:  Result.Code := kcF8;
+      VK_F9:  Result.Code := kcF9;
+      VK_F10: Result.Code := kcF10;
+      VK_F11: Result.Code := kcF11;
+      VK_F12: Result.Code := kcF12;
+      VK_F13: Result.Code := kcF13;
+      VK_F14: Result.Code := kcF14;
       else begin
-        if KE.AsciiChar = #3 then
-          Result.Code := kcCtrlC
-        else if KE.AsciiChar = #19 then
-          Result.Code := kcCtrlS
-        else if KE.AsciiChar = #24 then
-          Result.Code := kcCtrlX
-        else if KE.AsciiChar <> #0 then
-        begin
-          Result.Code := kcChar;
-          Result.Ch   := KE.AsciiChar;
+        { Map Ctrl+letter via the ASCII control char value }
+        case KE.AsciiChar of
+          #1:  Result.Code := kcCtrlA;
+          #2:  Result.Code := kcCtrlB;
+          #3:  Result.Code := kcCtrlC;
+          #4:  Result.Code := kcCtrlD;
+          #5:  Result.Code := kcCtrlE;
+          #6:  Result.Code := kcCtrlF;
+          #7:  Result.Code := kcCtrlG;
+          #11: Result.Code := kcCtrlK;
+          #12: Result.Code := kcCtrlL;
+          #14: Result.Code := kcCtrlN;
+          #15: Result.Code := kcCtrlO;
+          #16: Result.Code := kcCtrlP;
+          #17: Result.Code := kcCtrlQ;
+          #18: Result.Code := kcCtrlR;
+          #19: Result.Code := kcCtrlS;
+          #20: Result.Code := kcCtrlT;
+          #21: Result.Code := kcCtrlU;
+          #22: Result.Code := kcCtrlV;
+          #23: Result.Code := kcCtrlW;
+          #24: Result.Code := kcCtrlX;
+          #25: Result.Code := kcCtrlY;
+          #26: Result.Code := kcCtrlZ;
+          #0: ;  { modifier-only keydown with no character — ignore }
+          else begin
+            Result.Code := kcChar;
+            Result.Ch   := KE.AsciiChar;
+          end;
         end;
       end;
     end;

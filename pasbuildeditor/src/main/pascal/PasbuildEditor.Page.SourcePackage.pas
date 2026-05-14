@@ -65,7 +65,7 @@ begin
 
       if LastLabel <> '' then Menu.SelectByLabel(LastLabel);
       Sel := Menu.Run;
-      case CheckGlobalKeys(Menu, Ctx, Sel) of
+      case CheckGlobalKeys(Ctx) of
         gkContinue: Continue;
         gkBreak:    Break;
       end;

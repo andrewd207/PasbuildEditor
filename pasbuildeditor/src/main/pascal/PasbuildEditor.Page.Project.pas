@@ -181,12 +181,13 @@ begin
       Menu.Add(TMenuItem.Create('Scan folder for modules', nil, '', 'A'));
       Menu.Add(TMenuItem.Create('Add existing path',       nil, '', 'X'));
 
+      Menu.HelpDoc := 'modules';
       if LastLabel <> '' then Menu.SelectByLabel(LastLabel);
       Sel    := Menu.Run;
       SelIdx := Menu.Selected;
       UChar  := Menu.UnhandledChar;
 
-      case CheckGlobalKeys(Menu, Ctx, Sel, 'modules') of
+      case CheckGlobalKeys(Ctx) of
         gkContinue: Continue;
         gkBreak:    Break;
       end;
@@ -526,13 +527,14 @@ begin
         Menu.Add(It);
       end;
 
+      Menu.HelpDoc := 'project';
       if Ctx.LastMenuLabel <> '' then Menu.SelectByLabel(Ctx.LastMenuLabel);
       Sel := Menu.Run;
 
       if (Menu.Selected >= 0) and (Menu.Selected < Menu.Items.Count) then
         Ctx.LastMenuLabel := Menu.Items[Menu.Selected].Label_;
 
-      case CheckGlobalKeys(Menu, Ctx, Sel, 'project') of
+      case CheckGlobalKeys(Ctx) of
         gkContinue: Continue;
         gkBreak:    Break;
       end;

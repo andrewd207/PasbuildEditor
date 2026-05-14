@@ -72,7 +72,7 @@ begin
 
       Sel := Menu.Run;
       if Sel <> nil then LastLabel := Sel.Label_;
-      case CheckGlobalKeys(Menu, Ctx, Sel) of
+      case CheckGlobalKeys(Ctx) of
         gkContinue: Continue;
         gkBreak:    Break;
       end;
@@ -120,7 +120,7 @@ begin
             SortedMods.Free;
           end;
           AddSel := AddMenu.Run;
-          case CheckGlobalKeys(AddMenu, Ctx, AddSel) of
+          case CheckGlobalKeys(Ctx) of
             gkContinue: Continue;
             gkBreak:    Break;
           end;

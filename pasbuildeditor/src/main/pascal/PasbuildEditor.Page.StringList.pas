@@ -48,7 +48,7 @@ begin
       SMenu.Add(TMenuItem.Create('Add entry', nil, '', 'A'));
 
       SSel := SMenu.Run;
-      case CheckGlobalKeys(SMenu, Ctx, SSel) of
+      case CheckGlobalKeys(Ctx) of
         gkContinue: Continue;
         gkBreak:    Break;
       end;

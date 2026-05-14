@@ -36,7 +36,7 @@ type
     FFormStack:   array of TForm;
     FOnKeyDown:   TKeyDownEvent;
     FOnIdle:      TNotifyEvent;
-    function  ActiveForm: TForm;
+    function  GetActiveForm: TForm;
     procedure DispatchKey(var Key: TKeyEvent);
     procedure RepaintActive;
     procedure HandleResize;
@@ -64,6 +64,7 @@ type
     function  ShowModal(AForm: TForm): Integer;
 
     property Terminated: Boolean       read FTerminated;
+    property ActiveForm: TForm         read GetActiveForm;
     property OnKeyDown:  TKeyDownEvent read FOnKeyDown  write FOnKeyDown;
     { Fired each ProcessMessages cycle when there is no pending input. }
     property OnIdle:     TNotifyEvent  read FOnIdle     write FOnIdle;
@@ -74,7 +75,7 @@ var
 
 implementation
 
-function TApplication.ActiveForm: TForm;
+function TApplication.GetActiveForm: TForm;
 var N: Integer;
 begin
   N := Length(FFormStack);
@@ -88,7 +89,7 @@ procedure TApplication.DispatchKey(var Key: TKeyEvent);
 var
   AF: TForm;
 begin
-  AF := ActiveForm;
+  AF := GetActiveForm;
   if Assigned(AF) then
     if AF.KeyDown(Key) then Exit;
   if Assigned(FOnKeyDown) then
@@ -99,7 +100,7 @@ procedure TApplication.RepaintActive;
 var
   AF: TForm;
 begin
-  AF := ActiveForm;
+  AF := GetActiveForm;
   if Assigned(AF) and AF.Invalidated then
   begin
     Term.InvalidateFront;
@@ -112,7 +113,7 @@ procedure TApplication.HandleResize;
 var
   AF: TForm;
 begin
-  AF := ActiveForm;
+  AF := GetActiveForm;
   if Assigned(AF) then
   begin
     AF.SetBounds(1, 1, Term.Width, Term.Height);

@@ -56,8 +56,7 @@ type
     FExitedLeft:     Boolean;  // True when Run returned nil via Left arrow (not Esc/Q)
     FUnhandledChar:  Char;     // Set when a char key wasn't consumed; #0 otherwise
     FDeletePressed:  Boolean;  // True when Del was pressed on the current selection
-    FF1Pressed:      Boolean;  // True when F1 was pressed
-    FF2Pressed:      Boolean;  // True when F2 was pressed
+    FHelpDoc:        string;
 
     function Selectable(I: Integer): Boolean;
     function NextSel(From, Dir: Integer): Integer;
@@ -90,8 +89,10 @@ type
     property ExitedLeft:    Boolean       read FExitedLeft;
     property UnhandledChar: Char          read FUnhandledChar;
     property DeletePressed: Boolean       read FDeletePressed;
-    property F1Pressed:     Boolean       read FF1Pressed;
-    property F2Pressed:     Boolean       read FF2Pressed;
+    { Help document name for F1 (e.g. 'build', 'project'). Empty = no help. }
+    property HelpDoc:       string        read FHelpDoc        write FHelpDoc;
+    { Label of the currently highlighted item; empty when nothing is selected. }
+    function SelectedLabel: string;
     { Screen row (1-based) of the currently selected item, for in-place editing. }
     function SelectedRow: Integer;
   end;
@@ -448,6 +449,14 @@ begin
     FScrollOff := FSel - VR + 1;
 end;
 
+function TMenu.SelectedLabel: string;
+begin
+  if (FSel >= 0) and (FSel < FItems.Count) then
+    Result := FItems[FSel].Label_
+  else
+    Result := '';
+end;
+
 function TMenu.SelectedRow: Integer;
 begin
   Result := FHeaderRows + 1 + (FSel - FScrollOff);
@@ -653,20 +662,6 @@ begin
       Close(1);
     end;
 
-    kcF1: begin
-      FF1Pressed := True;
-      if (FSel >= 0) and (FSel < FItems.Count) then
-        FSelectedItem := FItems[FSel];
-      Close(1);
-    end;
-
-    kcF2: begin
-      FF2Pressed := True;
-      if (FSel >= 0) and (FSel < FItems.Count) then
-        FSelectedItem := FItems[FSel];
-      Close(1);
-    end;
-
     kcChar: begin
       for Item in FItems do
         if Selectable(FItems.IndexOf(Item)) and
@@ -699,8 +694,6 @@ begin
   FExitedLeft    := False;
   FUnhandledChar := #0;
   FDeletePressed := False;
-  FF1Pressed     := False;
-  FF2Pressed     := False;
   ModalResult    := 0;
   Invalidate;
   Application.ShowModal(Self);
