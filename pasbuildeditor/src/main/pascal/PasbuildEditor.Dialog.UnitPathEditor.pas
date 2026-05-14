@@ -15,6 +15,7 @@ interface
 
 uses
   Classes, SysUtils,
+  TermUI.StringUtils,
   TermUI.Terminal, TermUI.Menu,
   PasbuildEditor.ProjectModel;
 
@@ -86,9 +87,9 @@ begin
         begin
           Prefix := IncludeTrailingPathDelimiter(ASrcPrefix);
           if (ASrcPrefix <> '') and
-             (Copy(NewVal, 1, Length(Prefix)) = Prefix) then
-            NewVal := Copy(NewVal, Length(Prefix) + 1, MaxInt);
-          if (NewVal <> '') and ((Copy(NewVal, 1, 3) = '../') or (NewVal = '..')) then
+             (CopyNeutral(NewVal, 0, Length(Prefix)) = Prefix) then
+            NewVal := CopyNeutral(NewVal, Length(Prefix), MaxInt);
+          if (NewVal <> '') and ((CopyNeutral(NewVal, 0, 3) = '../') or (NewVal = '..')) then
           begin
             if Confirm('Path is outside the source directory. Are you sure?') then
               APath := NewVal;

@@ -15,6 +15,7 @@ interface
 
 uses
   Classes, SysUtils,
+  TermUI.StringUtils,
   TermUI.Menu,
   PasbuildEditor.ProjectModel,
   PasbuildEditor.UIContext;
@@ -60,11 +61,11 @@ var
           begin
             ReadLn(F, Line);
             Line := Trim(Line);
-            if SameText(Copy(Line, 1, 5), 'unit ') then
+            if SameText(CopyNeutral(Line, 0, 5), 'unit ') then
             begin
-              UnitName := Trim(Copy(Line, 6, MaxInt));
-              if (UnitName <> '') and (UnitName[Length(UnitName)] = ';') then
-                Delete(UnitName, Length(UnitName), 1);
+              UnitName := Trim(CopyNeutral(Line, 5, MaxInt));
+              if (UnitName <> '') and (UnitName.Index[Length(UnitName) - 1] = ';') then
+                DeleteNeutral(UnitName, Length(UnitName) - 1, 1);
               UnitName := Trim(UnitName);
             end;
           end;

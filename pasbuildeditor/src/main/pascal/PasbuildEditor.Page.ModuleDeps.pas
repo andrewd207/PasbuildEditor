@@ -15,6 +15,7 @@ interface
 
 uses
   Classes, SysUtils,
+  TermUI.StringUtils,
   TermUI.Menu,
   PasbuildEditor.ProjectModel,
   PasbuildEditor.UIContext;
@@ -104,9 +105,9 @@ begin
             begin
               ModName   := SortedMods.Names[I];
               StorePath := SortedMods.ValueFromIndex[I];
-              if (Length(ModName) > 0) and (ModName[1] = #0) then
+              if (Length(ModName) > 0) and (ModName.Index[0] = #0) then
               begin
-                ModName := Copy(ModName, 2, MaxInt) + ' (current)';
+                ModName := CopyNeutral(ModName, 1, MaxInt) + ' (current)';
                 SelfItem         := TMenuItem.Create(ModName, nil, StorePath);
                 SelfItem.DimItem := True;
                 SelfItem.Enabled := False;

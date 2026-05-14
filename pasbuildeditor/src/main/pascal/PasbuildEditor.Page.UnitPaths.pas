@@ -15,6 +15,7 @@ interface
 
 uses
   Classes, SysUtils,
+  TermUI.StringUtils,
   TermUI.Menu,
   PasbuildEditor.ProjectModel,
   PasbuildEditor.UIContext;
@@ -129,7 +130,7 @@ begin
         if RunUnitPathEditor(Ctx.Project, Ctx.ParentPOM,
              Ctx.Breadcrumb + ' > ' + ATitle + ' > Add',
              SrcBaseDir, Path, Cond,
-             Copy(ATitle, 1, Length(ATitle) - 1), nil, P.SourceDirectory) and (Path <> '') then
+             CopyNeutral(ATitle, 0, Length(ATitle) - 1), nil, P.SourceDirectory) and (Path <> '') then
         begin
           if AKind = 'include' then
             P.AddIncludePath(Path, Cond)
@@ -166,7 +167,7 @@ begin
         if RunUnitPathEditor(Ctx.Project, Ctx.ParentPOM,
              Ctx.Breadcrumb + ' > ' + ATitle + ' > ' + Path,
              SrcBaseDir, Path, Cond,
-             Copy(ATitle, 1, Length(ATitle) - 1), @Deleted, P.SourceDirectory) then
+             CopyNeutral(ATitle, 0, Length(ATitle) - 1), @Deleted, P.SourceDirectory) then
         begin
           if AKind = 'include' then
           begin

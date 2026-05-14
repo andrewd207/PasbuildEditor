@@ -15,6 +15,7 @@ interface
 
 uses
   Classes, SysUtils,
+  TermUI.StringUtils,
   TermUI.Terminal, TermUI.Menu,
   PasbuildEditor.ProjectModel;
 
@@ -240,7 +241,7 @@ begin
     kcBackspace: begin
       if Length(FFilter) > 0 then
       begin
-        Delete(FFilter, Length(FFilter), 1);
+        DeleteNeutral(FFilter, Length(FFilter) - 1, 1);
         BuildShown;
         if FSel >= FShown.Count then FSel := 0;
         FFilterFocused := True;
