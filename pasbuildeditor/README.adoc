@@ -1,0 +1,220 @@
+= PasbuildEditor
+Andrew Haines <andrewd207@github>
+:toc: left
+:icons: font
+
+A keyboard-driven, full-screen terminal editor for https://github.com/graemeg/PasBuild[PasBuild] `project.xml` files, written in Free Pascal using the TermUI library.
+
+== Overview
+
+https://github.com/graemeg/PasBuild[PasBuild] is a Maven-inspired build tool for Free Pascal. Its `project.xml` files describe build settings, unit paths, profiles, module dependencies, and more. PasbuildEditor provides a safe, structured UI for editing them from the terminal without needing to touch XML directly.
+
+The editor supports all three PasBuild project types:
+
+* *Application* — produces an executable binary.
+* *Library* — produces a compiled unit library.
+* *POM* — a multi-module aggregator with no source of its own.
+
+== Building
+
+Requires Free Pascal 3.x and PasBuild installed and on `$PATH`.
+
+[source,shell]
+----
+pasbuild compile
+----
+
+Run from the repository root (the POM). The binary is written to `target/pb-editor`.
+
+To build just this submodule:
+
+[source,shell]
+----
+cd pasbuildeditor
+pasbuild compile
+----
+
+== Usage
+
+[source,shell]
+----
+pb-editor [path/to/project.xml]
+----
+
+If no path is given the editor looks for `project.xml` in the current directory. The editor opens on the *Project* page for the given file.
+
+== Navigation
+
+All navigation is keyboard-driven.
+
+[cols="1,3"]
+|===
+| Up / Down            | Move between menu items.
+| Page Up / Page Down  | Scroll a full page.
+| Home / End           | Jump to first / last item.
+| Enter / Right        | Open sub-menu or edit item.
+| Escape / Left        | Go back one level.
+| Highlighted letter   | Jump directly to that item (hotkey).
+| F1                   | Open context help for the current page.
+| F2                   | Open the About dialog.
+| Ctrl-S               | Save the current project file.
+| Ctrl-X               | Save and return to the parent project (or exit if at the top level).
+| Ctrl-C               | Quit without saving.
+|===
+
+Unsaved changes are flagged in the title bar. Navigating back out of a sub-project with Ctrl-X saves the sub-project and returns to the parent.
+
+== Pages
+
+=== Project page
+
+The entry point for any `project.xml`. Shows identity fields and provides access to all sub-pages.
+
+[cols="1,3"]
+|===
+| Name        | Short identifier used in generated files and dependency references.
+| Version     | Semantic version (e.g. `1.0.0`). Leave blank to inherit from a parent POM.
+| Author      | Author name or contact string.
+| License     | SPDX identifier (e.g. `MIT`, `BSD-3-Clause`, `Apache-2.0`). See https://spdx.org/licenses/[spdx.org/licenses].
+| Description | Short human-readable summary.
+| Project URL | Homepage or documentation URL.
+| Repo URL    | Source repository URL.
+| Profiles    | Opens the profiles sub-page.
+| Run build   | Opens the build runner.
+| Build / Dependencies | Opens the build configuration sub-page. _(Application and library only.)_
+| Modules / Children   | Opens the modules sub-page. _(POM only.)_
+|===
+
+=== Build / Dependencies page
+
+Compiler settings, source paths, and package dependencies.
+
+[cols="1,3"]
+|===
+| Main source       | Entry-point Pascal source file (e.g. `Main.pas`). Relative to `project.xml`. _(Application only.)_
+| Output directory  | Where compiled binaries and units are written. Convention: `target/`.
+| Source directory  | Root of the source tree. Convention: `src/main/pascal/`.
+| Executable name   | Binary name without platform extension. _(Application only.)_
+| Unit paths        | Extra directories searched for `.ppu` files. Each path can have a platform or profile condition.
+| Defines           | Compiler defines (`-d` flags) active for every build.
+| Include paths     | Extra directories searched for `.inc` files (`-Fi` flags).
+| Compiler options  | Extra FPC command-line flags for every build (e.g. `-O2`, `-gw`).
+| Bootstrap exclude | Units excluded from the auto-generated bootstrap program.
+| Source package    | Extra directories included when running `pasbuild source-package`.
+| Dependencies      | External package dependencies from the pasbuild repository (name + version).
+| Module dependencies | Sibling POM modules this module depends on. _(Child module only.)_
+|===
+
+=== Profiles page
+
+Named build profiles with per-profile defines and compiler options.
+
+Each profile has an *ID*, an optional list of *defines*, and an optional list of *compiler options*. Activate a profile on the command line:
+
+[source,shell]
+----
+pasbuild compile -p debug
+----
+
+Common profiles: `debug` (e.g. `-gw -Cg`) and `release` (e.g. `-O2 -Xs`).
+
+=== Modules page _(POM only)_
+
+Lists child modules. Each row shows the module name and its path relative to the POM.
+
+[cols="1,3"]
+|===
+| E / D          | Enable or disable the selected module. Disabled modules are skipped by default.
+| Del            | Remove the module from the POM (no files deleted on disk).
+| Create new     | Interactive wizard: creates a subdirectory, runs `pasbuild init`, and adds the result to the POM.
+| Scan folder    | Scans immediate subdirectories for unregistered `project.xml` files and offers to add them.
+| Add existing   | Browse or type a path to a module that already exists on disk.
+|===
+
+=== Build runner
+
+Runs a pasbuild goal against the current project and streams live output.
+
+[cols="1,3"]
+|===
+| clean              | Delete all build artifacts in `target/`.
+| process-resources  | Copy resource files to `target/`.
+| compile            | Compile the project (most common day-to-day goal).
+| process-test-resources | Copy test resources.
+| test-compile       | Compile the test program.
+| test               | Compile and run the test suite.
+| package            | Clean, compile, and produce a distributable archive.
+| source-package     | Produce a source archive.
+| install            | Install compiled units into the local pasbuild repository (`~/.pasbuild/repository/`).
+| dependency-tree    | Print the resolved dependency tree without compiling.
+| resolve            | Output the fully resolved build config as JSON.
+| (custom)           | Enter any goal name manually (for plugin goals).
+|===
+
+Use Up/Down to scroll output; Enter or Escape to return to the goal list.
+
+=== Context help
+
+Press *F1* on any page to open the built-in AsciiDoc help viewer. The viewer opens to the section relevant to the current page. Press Tab to switch between the table of contents and the content pane; press Esc or Q to close.
+
+== Project structure
+
+[source]
+----
+pasbuildeditor/
+  src/
+    main/
+      pascal/
+        Main.pas                              Entry point, top-level navigation loop
+        PasbuildEditor.ProjectModel.pas       XML read/write (TProjectModel)
+        PasbuildEditor.GlobalKeys.pas         Ctrl-S/X/C handler, global key router
+        PasbuildEditor.Page.Project.pas       Project identity page
+        PasbuildEditor.Page.Profiles.pas      Build profiles page
+        PasbuildEditor.Page.BuildRunner.pas   Run-build page
+        PasbuildEditor.Page.StringList.pas    Generic list editor (defines, options)
+        PasbuildEditor.Page.UnitPaths.pas     Unit paths page
+        PasbuildEditor.Page.Dependencies.pas  Package dependencies page
+        PasbuildEditor.Page.ModuleDeps.pas    Module dependencies page
+        PasbuildEditor.Page.BootstrapExclude.pas  Bootstrap exclude list
+        PasbuildEditor.Page.SourcePackage.pas     Source package paths
+        PasbuildEditor.Page.ShowHelp.pas      AsciiDoc help viewer wrapper
+        PasbuildEditor.Page.Common.pas        Shared page utilities
+        PasbuildEditor.Dialog.*.pas           Modal dialogs (search, conditions, …)
+        PasbuildEditor.Compiler.pas           FPC compiler driver interface
+        PasbuildEditor.DependencyResolver.pas Package dependency resolution
+        PasbuildEditor.SPDX.pas              SPDX license identifier list
+        PasbuildEditor.Consts.pas            Version constant
+        PasbuildEditor.Strings.pas           Shared string constants
+        PasbuildEditor.UI.Colors.pas         UI color scheme
+      resources/
+        help/
+          project.adoc       Help text — Project page
+          build.adoc         Help text — Build/Dependencies page
+          modules.adoc       Help text — Modules page
+          run-build.adoc     Help text — Build runner page
+  project.xml
+----
+
+== Key modules
+
+=== PasbuildEditor.ProjectModel
+
+Owns the in-memory representation of a `project.xml` and handles all XML serialisation. The rest of the editor reads and writes through `TProjectModel`; no page touches the XML directly.
+
+=== PasbuildEditor.GlobalKeys
+
+Installs a handler into `Application.OnKeyDown` that maps:
+
+* Ctrl-C → quit
+* Ctrl-S → save current project
+* Ctrl-X → save-and-quit (saves the current project and its parent if navigated via sub-module)
+
+Sets boolean globals (`GQuitRequested`, `GSaveRequested`, `GCtrlXRequested`, `GCtrlCRequested`) polled by each page loop. `CheckGlobalKeys` is a shared helper called after every `TMenu.Run` to handle F1 help, F2 about, and the save/quit signals uniformly.
+
+=== PasbuildEditor.Compiler
+
+Drives `pasbuild compile` via `TProcess` with non-blocking output polling, streaming stdout/stderr line-by-line to the build runner's output window.
+
+== License
+
+BSD 3-Clause. See `LICENSE` in the repository root.

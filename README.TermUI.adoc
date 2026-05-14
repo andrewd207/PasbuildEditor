@@ -3,15 +3,20 @@ Andrew Haines <andrewd207@github>
 :toc: left
 :icons: font
 
-A small, self-contained Free Pascal library for building keyboard-driven full-screen terminal UIs. It provides a double-buffered terminal abstraction, a menu widget, an inline line editor, and a recursive file/directory picker.
+A self-contained Free Pascal library for building keyboard-driven full-screen terminal UIs. It provides a double-buffered terminal abstraction, an event-driven application/form/control hierarchy, and a set of ready-made widgets.
 
 == Units
 
 [cols="1,3"]
 |===
-| `TermUI.Terminal`          | Double-buffered terminal base class (`TTerminal`). Platform implementations register themselves via `RegisterTerminalFactory`.
-| `TermUI.Menu`              | Menu widget, inline editor, confirmation prompt, and drawing helpers.
-| `TermUI.PathPicker`        | Full-screen recursive path picker.
+| `TermUI.Terminal`        | Double-buffered terminal base class (`TTerminal`). Platform implementations register themselves via `RegisterTerminalFactory`.
+| `TermUI.Control`         | Abstract base class (`TControl`) for all visible, interactive elements.
+| `TermUI.Forms`           | Full-screen container (`TForm`) managing child controls with focus cycling.
+| `TermUI.Application`     | Singleton event loop (`TApplication`) and form stack manager.
+| `TermUI.Menu`            | Scrollable menu widget, inline editor, confirmation prompt, and drawing helpers.
+| `TermUI.FilteredPicker`  | Real-time filtered list picker with live substring search.
+| `TermUI.PathPicker`      | Full-screen recursive file/directory browser.
+| `TermUI.AsciiDocViewer`  | AsciiDoc-subset viewer with table of contents and syntax highlighting.
 |===
 
 A platform unit (`TermUI.Terminal.Platform`) must be compiled into the *application*, not the library. The Unix implementation lives in `src/platform/unix/`.
@@ -25,6 +30,7 @@ In your application's `uses` clause include the platform unit so the factory is 
 uses
   TermUI.Terminal,
   TermUI.Terminal.Platform,  { registers the platform implementation }
+  TermUI.Application,
   TermUI.Menu;
 ----
 
@@ -34,33 +40,100 @@ Set `AppTitle` and `AppVersion` before entering raw mode:
 ----
 AppTitle   := 'MyApp';
 AppVersion := '1.0';
-Term.EnableRawMode;
-{ ... UI loop ... }
-Term.DisableRawMode;
+Term.EnterAltScreen;
+Application.Run;
+Term.ExitAltScreen;
 ----
 
-`Term` is a global `TTerminal` instance created automatically when the unit is initialised.
+`Term` is a global function returning the platform `TTerminal` instance (created on first access). `Application` is a global `TApplication` instance created at unit initialisation.
+
+== Architecture
+
+----
+TApplication  (global, singleton)
+  └── Form Stack  [TForm, ...]
+        └── TForm  (full-screen container)
+              └── TControl children  (widgets)
+----
+
+`Application.Run` spins the event loop. Each cycle it polls for a key (16 ms timeout), repaints invalidated controls, and handles resize. Use `Application.ShowModal(AForm)` for blocking dialogs; it pushes the form, runs until `ModalResult <> 0`, then pops and returns the result.
+
+== TApplication
+
+[cols="1,3"]
+|===
+| `PushForm(AForm)`        | Push a form and activate it (fires `OnActivate`).
+| `PopForm`                | Pop the top form (fires `OnDeactivate`), invalidate the one below.
+| `ActiveForm`             | Current top-of-stack form.
+| `ShowModal(AForm)`       | Push, spin until `ModalResult <> 0`, pop, return result.
+| `Run`                    | Main loop — runs until `Terminate` is called.
+| `Terminate / Resume`     | Control the `FTerminated` flag.
+| `ProcessMessages`        | One event-loop cycle (resize → repaint → key → dispatch).
+| `OnKeyDown`              | App-level fallback for keys not consumed by any form/control.
+| `OnIdle`                 | Fired each idle cycle when no key was received.
+|===
+
+== TForm
+
+`TForm` extends `TControl` and owns its children.
+
+[cols="1,3"]
+|===
+| `Title`                  | Form title string.
+| `ModalResult`            | 0 = open; non-zero = closed. Set by `Close(N)`.
+| `AddControl(AControl)`   | Add an owned child control.
+| `ControlCount`           | Number of children.
+| `GetControl(Idx)`        | Access a child by index.
+| `FocusNext / FocusPrev`  | Cycle focus through enabled, visible children (also bound to Tab).
+| `FocusedControl`         | Currently focused child.
+| `Close(ModalResult)`     | Fire `OnDeactivate` and set `ModalResult`.
+| `CloseCancel`            | Shorthand: `Close(-1)`.
+| `OnActivate / OnDeactivate` | Lifecycle events fired by the application's form stack.
+|===
+
+Key dispatch: focused child → form's `DoKeyDown` → form's `OnKeyDown`.
+
+== TControl
+
+Base class for all visible, interactive elements.
+
+[cols="1,3"]
+|===
+| `Left, Top`              | Position (1-based).
+| `Width, Height`          | Size.
+| `Visible, Enabled`       | State flags.
+| `Invalidated`            | Dirty flag (read-only; set via `Invalidate`).
+| `SetBounds(L, T, W, H)`  | Atomic resize + invalidate.
+| `Invalidate`             | Mark as needing repaint.
+| `Paint`                  | Render if visible and invalidated.
+| `KeyDown(var Key): Bool` | Dispatch a key; return `True` = consumed.
+| `GotoLocal(X, Y)`        | Translate control-local coords to terminal coords.
+| `OnKeyDown`              | External key handler.
+| `OnPaint`                | External paint handler.
+|===
+
+Override `DoPaint` to draw, and `DoKeyDown` to handle keys (return `True` to consume).
 
 == TMenu
 
-Build a menu by creating a `TMenu`, adding items, then calling `Run`. `Run` blocks until the user selects an item, presses Escape/Left (returns `nil`), or presses a global signal key.
+Build a menu by creating a `TMenu`, populating it, and either calling `Run` (convenience wrapper) or `Application.ShowModal`.
 
 [source,pascal]
 ----
 var
   Menu: TMenu;
-  Sel:  TMenuItem;
 begin
-  Menu := TMenu.Create('My Menu');
+  Menu := TMenu.Create;
   try
-    Menu.AddHeader('Section');
-    Menu.Add(TMenuItem.Create('First option',  @DoFirst,  '', 'F'));
-    Menu.Add(TMenuItem.Create('Second option', @DoSecond, '', 'S'));
-    Menu.AddSeparator;
-    Menu.Add(TMenuItem.Create('Quit', nil, '', 'Q'));
-    Sel := Menu.Run;
-    if Assigned(Sel) and Assigned(Sel.Action) then
-      Sel.Action(nil);
+    Menu.Title := 'My Menu';
+    Menu.Items.Add(TMenuItem.CreateHeader('Section'));
+    Menu.Items.Add(TMenuItem.Create('First option',  @DoFirst,  '', 'F'));
+    Menu.Items.Add(TMenuItem.Create('Second option', @DoSecond, '', 'S'));
+    Menu.Items.Add(TMenuItem.CreateSeparator);
+    Menu.Items.Add(TMenuItem.Create('Quit', nil, '', 'Q'));
+    Menu.Run;
+    if Assigned(Menu.SelectedItem) and Assigned(Menu.SelectedItem.Action) then
+      Menu.SelectedItem.Action(nil);
   finally
     Menu.Free;
   end;
@@ -71,64 +144,176 @@ end;
 
 [cols="1,3"]
 |===
-| `Create(Label, Action, Value, Hotkey, Hint)` | Standard item. All parameters after `Label` are optional.
-| `CreateEmbeddedHotkey(Label, Action, Value, Hint)` | Derives the hotkey from the first `&` in the label string (e.g. `'&Quit'` → hotkey `Q`, displayed label `Quit`). The `&` is stripped before display.
-| `CreateHeader(Label)` | Non-selectable section heading.
-| `CreateSeparator` | Non-selectable horizontal rule.
+| `Create(Label, Action, Value, Hotkey, Hint)`           | Standard item. All parameters after `Label` are optional.
+| `CreateEmbeddedHotkey(Label, Action, Value, Hint)`     | Derives the hotkey from the first `&` in the label (e.g. `'&Quit'` → hotkey `Q`). The `&` is stripped before display.
+| `CreateHeader(Label)`                                  | Non-selectable section heading.
+| `CreateSeparator`                                      | Non-selectable horizontal rule.
 |===
 
 === TMenuItem fields
 
 [cols="1,3"]
 |===
-| `Value`     | Secondary text rendered right-aligned in green.
-| `Hint`      | Gray suffix appended after the label (for header items).
-| `Desc`      | One-line description shown in the status bar when the item is highlighted.
-| `Hotkey`    | Single character that jumps to and selects this item directly.
-| `Enabled`   | When `False` the item is skipped during navigation (default `True`).
-| `DimValue`  | Render `Value` in grey (e.g. `(none)` placeholders).
-| `DimItem`   | Render the entire row in grey (e.g. inactive modules).
-| `MarkOld`   | Render `Value` in yellow (e.g. outdated version numbers).
+| `Value`      | Secondary text rendered right-aligned in green.
+| `Hint`       | Gray suffix appended after the label (for header items).
+| `Desc`       | One-line description shown in the status bar when the item is highlighted.
+| `Hotkey`     | Single character that jumps to and selects this item directly.
+| `Enabled`    | When `False` the item is skipped during navigation (default `True`).
+| `DimValue`   | Render `Value` in grey (e.g. `(none)` placeholders).
+| `DimItem`    | Render the entire row in grey (e.g. inactive modules).
+| `MarkOld`    | Render `Value` in yellow (e.g. outdated version numbers).
 |===
 
 === TMenu API
 
 [cols="1,3"]
 |===
-| `Add(Item)`             | Append a selectable item.
-| `AddHeader(Label)`      | Append a non-selectable section heading.
-| `AddSeparator`          | Append a horizontal rule.
+| `Items`                 | `TObjectList` of `TMenuItem` — add items directly.
 | `SelectByLabel(Label)`  | Move the selection to the first item whose label matches.
-| `Run`                   | Draw the menu and block until the user acts; returns the selected `TMenuItem` or `nil` on back/quit.
-| `SelectedRow`           | Screen row (1-based) of the currently highlighted item; useful for positioning an inline editor.
+| `Run`                   | Draw the menu and block (via `Application.ShowModal`) until the user acts.
+| `SelectedItem`          | The selected `TMenuItem`, or `nil` on back/cancel.
+| `SelectedRow`           | Screen row (1-based) of the highlighted item; useful for positioning an inline editor.
 |===
 
 After `Run` returns, check:
 
 [cols="1,3"]
 |===
-| `ExitedLeft`    | `True` when the left-arrow was used to go back (vs. Escape).
-| `DeletePressed` | `True` when Del was pressed on the current selection.
-| `F1Pressed`     | `True` when F1 was pressed.
-| `UnhandledChar` | Set to the typed character when a keystroke was not consumed; `#0` otherwise.
+| `ExitedLeft`     | `True` when the left-arrow was used to go back (vs. Escape).
+| `DeletePressed`  | `True` when Del was pressed on the current selection.
+| `F1Pressed`      | `True` when F1 was pressed.
+| `F2Pressed`      | `True` when F2 was pressed.
+| `UnhandledChar`  | Set to the typed character when a keystroke was not consumed; `#0` otherwise.
 |===
 
 === Keyboard navigation
 
 [cols="1,3"]
 |===
-| Up / Down          | Move selection one item.
-| Page Up / Page Down | Move selection one visible page.
-| Home / End         | Jump to first / last selectable item.
-| Enter / Right      | Confirm selection.
-| Escape             | Exit (`ExitedLeft = False`).
-| Left               | Exit (`ExitedLeft = True`).
-| Delete             | Signal deletion (`DeletePressed = True`).
-| F1                 | Signal help (`F1Pressed = True`).
-| Printable char     | Match a hotkey, or set `UnhandledChar` and exit.
+| Up / Down            | Move selection one item.
+| Page Up / Page Down  | Move selection one visible page.
+| Home / End           | Jump to first / last selectable item.
+| Enter / Right        | Confirm selection.
+| Escape               | Exit (`ExitedLeft = False`).
+| Left                 | Exit (`ExitedLeft = True`).
+| Delete               | Signal deletion (`DeletePressed = True`).
+| F1 / F2              | Set `F1Pressed` / `F2Pressed` and exit.
+| Printable char       | Match a hotkey, or set `UnhandledChar` and exit.
 |===
 
-Incremental search is built in: typing any printable character that does not match a hotkey is returned to the caller via `UnhandledChar`.
+== TFilteredPicker
+
+Real-time filtered list picker. Typing narrows the list by substring match on `Label_` or `Desc`.
+
+[source,pascal]
+----
+var
+  Items: array of TFilteredPickerItem;
+  Result: string;
+begin
+  SetLength(Items, 2);
+  Items[0].Label_ := 'foo';  Items[0].Desc := 'First option';
+  Items[1].Label_ := 'bar';  Items[1].Desc := 'Second option';
+  if RunFilteredPicker('Pick one', Items, Result, '') then
+    { Result holds the chosen Label_ };
+end;
+----
+
+`RunFilteredPicker` is a one-shot helper. Construct `TFilteredPicker` directly for more control.
+
+=== Keyboard navigation
+
+[cols="1,3"]
+|===
+| Up / Down            | Move through the filtered list.
+| Page Up / Page Down  | Bulk scroll.
+| Home / End           | Jump to start / end.
+| Any character        | Append to search filter, reset list.
+| Backspace / Delete   | Edit the search string.
+| Enter (first press)  | Stage: pre-fill search with selected item's label.
+| Enter (second press) | Confirm the staged selection.
+| Esc                  | Cancel.
+|===
+
+If the filtered list is empty the first Enter also confirms.
+
+== RunPathPicker
+
+Full-screen recursive file/directory browser with an incremental filter. Returns `True` when the user accepts; the chosen path is written back via `APath`.
+
+[source,pascal]
+----
+var P: string;
+begin
+  P := '/home/user';
+  if RunPathPicker('/home/user', 'Select project directory', True, P) then
+    { P now holds the chosen directory };
+end;
+----
+
+Pass `ADirsOnly = False` to allow file selection as well.
+
+Typing narrows the list; Up/Down moves focus into the file list. Enter on a directory descends into it. Enter in the filter box accepts the current text — if the path does not exist the user is prompted to create it. Hidden entries (names starting with `.`) are shown only when the filter itself starts with `.`.
+
+=== Keyboard navigation
+
+[cols="1,3"]
+|===
+| Up / Down            | Move selection.
+| Page Up / Page Down  | Bulk scroll.
+| Home / End           | Jump to bounds.
+| Enter (on directory) | Descend: update filter, rebuild list.
+| Enter (on file / empty filter) | Accept selection.
+| Backspace            | Remove last path component.
+| Any character        | Append to filter.
+| Tab                  | Toggle focus between filter field and file list.
+| Esc                  | Cancel.
+|===
+
+== TAsciiDocViewer
+
+Full-featured AsciiDoc-subset viewer with a two-pane layout: table of contents (left) and word-wrapped content (right).
+
+[source,pascal]
+----
+var
+  Viewer: TAsciiDocViewer;
+  Lines: TStringList;
+begin
+  Lines := TStringList.Create;
+  Lines.LoadFromFile('help.adoc');
+  Viewer := TAsciiDocViewer.Create;
+  Viewer.SetContent(Lines, 'Help', 'Installation');  { jumps to the 'Installation' H2 on open }
+  Application.ShowModal(Viewer);
+  Viewer.Free;
+  Lines.Free;
+end;
+----
+
+`SetContent(RawLines, Title, ContextKey)` — load and render. `ContextKey` scrolls content to the matching H2 heading on open.
+
+=== Supported syntax
+
+* Headings: `= H1`, `== H2`, `=== H3`, `==== H4`
+* Paragraphs with word-wrap
+* Fenced code blocks (`----` delimited or indented)
+* Bullet lists (`* item`, `- item`)
+* Horizontal rules (`---`, `***`)
+* Tables (basic)
+* Comments (`//`)
+* Inline markup: `\`monospace\``, `*bold*`, `_italic_`
+
+=== Keyboard navigation
+
+[cols="1,3"]
+|===
+| Tab / Left / Right   | Toggle focus: TOC ↔ Content.
+| Up / Down            | Scroll within active pane.
+| Page Up / Page Down  | Bulk scroll.
+| Home / End           | Jump to bounds.
+| Enter (on TOC item)  | Jump content to that section.
+| Esc / Q              | Close.
+|===
 
 == EditLine
 
@@ -166,67 +351,61 @@ ShowStatusMsg('Saved.', clBrightGreen);
 ShowStatusMsg('Error: file not found.', clRed);
 ----
 
-== RunPathPicker
-
-Full-screen file/directory browser with an incremental filter. Returns `True` when the user accepts a selection; the chosen path is written back via `APath`.
-
-[source,pascal]
-----
-var P: string;
-begin
-  P := '/home/user';
-  if RunPathPicker('/home/user', 'Select project directory', True, P) then
-    { P now holds the chosen directory };
-end;
-----
-
-Pass `ADirsOnly = False` to allow file selection as well.
-
-The top row is a filter box. Typing narrows the list; pressing Up/Down moves focus into the file list. Pressing Enter on a list entry copies it back to the filter box. Pressing Enter in the filter box accepts the current text as the result — if the path does not exist the user is prompted to create it. Hidden entries (names starting with `.`) are only shown when the filter itself starts with `.`.
-
-== Global Signals
-
-Four boolean globals are set by `TMenu.Run` and `RunPathPicker` in response to special key chords and are intended to be polled by the application's main loop:
-
-[cols="1,1,3"]
-|===
-| Variable          | Key     | Meaning
-| `GQuitRequested`  | Esc / Q | User wants to exit.
-| `GSaveRequested`  | Ctrl-S  | User requested an explicit save.
-| `GCtrlXRequested` | Ctrl-X  | User requested save-and-quit.
-| `GCtrlCRequested` | Ctrl-C  | Hard interrupt.
-|===
-
 == TTerminal
 
-`TTerminal` is an abstract double-buffered terminal. Drawing calls (e.g. `WriteStr`, `GotoXY`) write into a back buffer; `FlushOutput` diffs it against the front buffer and emits only changed cells, then swaps. This eliminates most flicker.
-
-Subclasses must implement `Width`, `Height`, `EnableRawMode`, `DisableRawMode`, `ReadKey`, `ReadKeyTimeout`, `HideCursor`, and `ShowCursor`. Override `HasResized` to detect terminal resize events (SIGWINCH); `TMenu.Run` and `RunPathPicker` call it after every keypress and redraw when it returns `True`.
-
-`EnterAltScreen` / `ExitAltScreen` are provided as no-ops in the base class; platform implementations may override them to switch to the terminal's alternate screen buffer.
-
-`ReadKeyTimeout` is a non-blocking variant of `ReadKey`:
-
-[source,pascal]
-----
-var K: TKeyEvent;
-begin
-  if Term.ReadKeyTimeout(K, 200) then
-    { handle K };
-end;
-----
-
-Returns `False` if no key arrived within `TimeoutMs` milliseconds.
-
-== Drawing Helpers
+`TTerminal` is an abstract double-buffered terminal. Drawing calls write into a back buffer; `FlushOutput` diffs it against the front buffer and emits only changed cells, then swaps.
 
 [cols="1,3"]
 |===
-| `DrawHeader(Breadcrumb, Row)` | Renders the title bar with app name, version, and breadcrumb path.
-| `DrawRule(Row, Col, Width)`   | Draws a horizontal separator line.
-| `PadRight(S, Width)`          | Right-pads a string with spaces to the given width (truncates if longer).
-| `JoinTruncated(List, Sep, MaxLen)` | Joins list items with a separator, appending `…` if the result exceeds `MaxLen`.
-| `IsValidIdentifier(S)`        | Returns `True` if `S` is a valid Pascal identifier (letter/underscore first, then letters/digits/underscores).
+| `GotoXY(X, Y)`           | Position cursor (1-based).
+| `WriteStr(S)`             | Write characters with current color/underline settings.
+| `SetFG(Color)`            | Set foreground color.
+| `SetBG(Color)`            | Set background color.
+| `SetUnderline(Bool)`      | Enable/disable underline.
+| `ResetColors`             | Restore default FG/BG/underline.
+| `ClearToEOL`              | Clear from cursor to end of line.
+| `ClearScreen`             | Clear back buffer.
+| `FlushOutput`             | Diff-render: emit ANSI only for changed cells, then swap buffers.
+| `InvalidateFront`         | Force a full redraw on the next flush.
+| `EnableRawMode / DisableRawMode` | Toggle raw terminal input.
+| `EnterAltScreen / ExitAltScreen` | Switch to/from the alternate screen buffer.
+| `HideCursor / ShowCursor` | Cursor visibility.
+| `IsTTY`                   | `True` when connected to an interactive terminal.
+| `Width, Height`           | Terminal dimensions.
+| `ReadKey`                 | Blocking key read.
+| `ReadKeyTimeout(Ms)`      | Non-blocking; returns `kcNone` on timeout.
+|===
+
+`Term` is a global function returning the singleton terminal instance. Subclasses must implement the virtual methods above. Platform implementations register themselves via `RegisterTerminalFactory`.
+
+=== TKeyCode values
+
+`kcNone`, `kcChar` (printable), `kcEnter`, `kcEscape`, `kcBackspace`, `kcDelete`, `kcTab`, `kcUp`, `kcDown`, `kcLeft`, `kcRight`, `kcPageUp`, `kcPageDown`, `kcHome`, `kcEnd`, `kcF1`, `kcF2`, `kcCtrlC`, `kcCtrlS`, `kcCtrlX`.
+
+=== TColor values
+
+`clDefault`, `clBlack`, `clRed`, `clGreen`, `clYellow`, `clBlue`, `clMagenta`, `clCyan`, `clWhite`, and bright variants (`clBrightRed`, `clBrightGreen`, etc.).
+
+== Drawing Helpers
+
+These free functions live in `TermUI.Menu`:
+
+[cols="1,3"]
+|===
+| `DrawHeader(Breadcrumb, Row)`          | Renders the title bar with app name, version, and breadcrumb path.
+| `DrawRule(Row, Col, Width)`            | Draws a horizontal separator line.
+| `PadRight(S, Width)`                   | Right-pads a string with spaces (truncates if longer).
+| `JoinTruncated(List, Sep, MaxLen)`     | Joins list items with a separator, appending `…` if the result exceeds `MaxLen`.
+| `IsValidIdentifier(S)`                 | Returns `True` if `S` is a valid Pascal identifier.
+|===
+
+== Global Variables
+
+[cols="1,3"]
+|===
+| `AppTitle`    | Application name shown in the title bar (default `'TermUI'`).
+| `AppVersion`  | Version string shown in the menu footer (default `''`).
+| `Application` | Global `TApplication` singleton (`TermUI.Application`).
 |===
 
 == License
