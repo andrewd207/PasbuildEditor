@@ -608,7 +608,10 @@ begin
   begin
     GCtrlXRequested := False;
     GQuitRequested  := True;
-    if Ctx.Modified then Ctx.SaveProject;
+    if Ctx.Modified then
+      Ctx.SaveProject(False, True)
+    else if Assigned(Ctx.Parent) and Ctx.Parent.Modified then
+      Ctx.Parent.SaveProject(True, True);
   end
   else if GQuitRequested or GCtrlCRequested then
   begin

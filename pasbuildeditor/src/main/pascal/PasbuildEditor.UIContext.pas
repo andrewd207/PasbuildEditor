@@ -36,7 +36,7 @@ type
       AParent: TUIContext = nil; AParentPOM: TProjectPOM = nil);
 
     procedure SetModified;
-    procedure SaveProject;
+    procedure SaveProject(ASilentSelf: Boolean = False; ASilentParent: Boolean = False);
     function  PromptSaveOnQuit: Boolean;
   end;
 
@@ -70,23 +70,26 @@ begin
   Modified := True;
 end;
 
-procedure TUIContext.SaveProject;
+procedure TUIContext.SaveProject(ASilentSelf: Boolean; ASilentParent: Boolean);
 begin
   if Project.FileName = '' then Exit;
   try
     Project.SaveToFile;
     Modified := False;
-    Term.InvalidateFront;
-    Term.GotoXY(1, Term.Height - 1);
-    Term.ClearToEOL;
-    Term.SetFG(clGreen);
-    Term.WriteStr(' Saved: ' + Project.FileName);
-    Term.ResetColors;
-    Term.FlushOutput;
-    if Application.Terminated then
-      Sleep(500)
-    else
-      Term.ReadKey;
+    if not ASilentSelf then
+    begin
+      Term.InvalidateFront;
+      Term.GotoXY(1, Term.Height - 1);
+      Term.ClearToEOL;
+      Term.SetFG(clGreen);
+      Term.WriteStr(' Saved: ' + Project.FileName);
+      Term.ResetColors;
+      Term.FlushOutput;
+      if Application.Terminated then
+        Sleep(500)
+      else
+        Term.ReadKey;
+    end;
   except
     on E: Exception do
     begin
@@ -94,11 +97,16 @@ begin
       Exit;
     end;
   end;
-  if (Project.Version = '') and not Assigned(ParentPOM) then
-    ShowStatusMsg('Warning: version is empty — consider setting a version for this standalone project.', clYellow);
+  if not ASilentSelf then
+    if (Project.Version = '') and not Assigned(ParentPOM) then
+      ShowStatusMsg('Warning: version is empty — consider setting a version for this standalone project.', clYellow);
   if Assigned(Parent) and Parent.Modified then
-    if Confirm('Parent project also has unsaved changes. Save parent now?', True) then
+  begin
+    if ASilentParent then
+      Parent.SaveProject(True, True)
+    else if Confirm('Parent project also has unsaved changes. Save parent now?', True) then
       Parent.SaveProject;
+  end;
 end;
 
 function TUIContext.PromptSaveOnQuit: Boolean;
