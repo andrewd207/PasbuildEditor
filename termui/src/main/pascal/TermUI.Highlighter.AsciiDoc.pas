@@ -59,23 +59,59 @@ type
   private
     FKinds:     array of TLineKind;
     FKindCount: Integer;
+    FCodeLang:  array of string;   { highlighter name for lkCode lines; '' = default dim }
+    FEmbedded:  TStringList;       { name -> TTextHighlighter, owned }
 
     function  KindOf(ARow: Integer): TLineKind;
+    function  EmbeddedHL(const AName: string): TTextHighlighter;
     procedure AddInlineSpans(const ALine: string; AStartCol: Integer;
       var ASpans: TTextSpanArray; var ACount: Integer);
     procedure AppendSpan(var ASpans: TTextSpanArray; var ACount: Integer;
       ACol, ALen: Integer; AFG: TColor; AUnderline: Boolean);
   public
+    constructor Create; override;
+    destructor  Destroy; override;
     procedure Prepare(ALines: TStrings); override;
     procedure GetSpans(ARow: Integer; const ALine: string;
       out ASpans: TTextSpanArray); override;
+    function Name: string; override;
   end;
 
 implementation
 
 uses Math;
 
+constructor TAsciiDocHighlighter.Create;
+begin
+  inherited;
+  FEmbedded := TStringList.Create;
+  FEmbedded.OwnsObjects := True;
+  FEmbedded.Sorted      := True;
+end;
+
+destructor TAsciiDocHighlighter.Destroy;
+begin
+  FEmbedded.Free;
+  inherited;
+end;
+
+function TAsciiDocHighlighter.EmbeddedHL(const AName: string): TTextHighlighter;
+var
+  I: Integer;
+begin
+  I := FEmbedded.IndexOf(AName);
+  if I >= 0 then
+    Result := TTextHighlighter(FEmbedded.Objects[I])
+  else
+    Result := nil;
+end;
+
 { ── Span helpers ── }
+
+function TAsciiDocHighlighter.Name: string;
+begin
+  Result := 'AsciiDoc';
+end;
 
 procedure TAsciiDocHighlighter.AppendSpan(var ASpans: TTextSpanArray;
   var ACount: Integer; ACol, ALen: Integer; AFG: TColor; AUnderline: Boolean);
@@ -145,31 +181,64 @@ end;
 
 procedure TAsciiDocHighlighter.Prepare(ALines: TStrings);
 var
-  I, EqCount: Integer;
-  S:          string;
-  InCode:     Boolean;
-  InTable:    Boolean;
+  I, J, EqCount: Integer;
+  S, AttrLower:  string;
+  InCode:        Boolean;
+  InTable:       Boolean;
+  NextBlockLang: string;
+  CodeLang:      string;
+  Needed:        TStringList;
+  HL:            TTextHighlighter;
 begin
   FKindCount := ALines.Count;
-  SetLength(FKinds, FKindCount);
-  InCode  := False;
-  InTable := False;
+  SetLength(FKinds,    FKindCount);
+  SetLength(FCodeLang, FKindCount);
+  InCode        := False;
+  InTable       := False;
+  NextBlockLang := '';
+  CodeLang      := '';
+
+  if FEmbedded = nil then
+  begin
+    FEmbedded := TStringList.Create;
+    FEmbedded.OwnsObjects := True;
+    FEmbedded.Sorted      := True;
+  end;
+
+  Needed := TStringList.Create;
+  try
+    Needed.Sorted     := True;
+    Needed.Duplicates := dupIgnore;
 
   for I := 0 to ALines.Count - 1 do
   begin
+    FCodeLang[I] := '';
     S := ALines[I];
 
     { Code fence }
     if S = '----' then
     begin
       FKinds[I] := lkCodeFence;
-      InCode    := not InCode;
+      if not InCode then
+      begin
+        CodeLang := NextBlockLang;
+        InCode   := True;
+        if CodeLang <> '' then
+          Needed.Add(CodeLang);
+      end
+      else
+      begin
+        InCode   := False;
+        CodeLang := '';
+      end;
+      NextBlockLang := '';
       Continue;
     end;
 
     if InCode then
     begin
-      FKinds[I] := lkCode;
+      FKinds[I]    := lkCode;
+      FCodeLang[I] := CodeLang;
       Continue;
     end;
 
@@ -197,8 +266,16 @@ begin
     if (Length(S) > 0) and (S[1] = '[') then
     begin
       FKinds[I] := lkAttribute;
+      AttrLower := LowerCase(S);
+      if (Pos('source,pascal', AttrLower) > 0) or
+         (Pos('source,pas',    AttrLower) > 0) or
+         (Pos('source,objectpascal', AttrLower) > 0) then
+        NextBlockLang := 'Pascal'
+      else
+        NextBlockLang := '';
       Continue;
     end;
+    NextBlockLang := '';
 
     { Blank }
     if Trim(S) = '' then
@@ -239,6 +316,24 @@ begin
 
     FKinds[I] := lkPara;
   end;
+
+    { Sync FEmbedded }
+    for I := FEmbedded.Count - 1 downto 0 do
+      if Needed.IndexOf(FEmbedded[I]) < 0 then
+        FEmbedded.Delete(I);
+    for I := 0 to Needed.Count - 1 do
+      if FEmbedded.IndexOf(Needed[I]) < 0 then
+      begin
+        HL := FindHighlighterByName(Needed[I]);
+        if Assigned(HL) then
+          FEmbedded.AddObject(Needed[I], HL);
+      end;
+  finally
+    Needed.Free;
+  end;
+
+  for J := 0 to FEmbedded.Count - 1 do
+    TTextHighlighter(FEmbedded.Objects[J]).Prepare(ALines);
 end;
 
 { ── GetSpans: per-line span generation ── }
@@ -249,6 +344,7 @@ var
   Kind:  TLineKind;
   Count: Integer;
   Len:   Integer;
+  HL:    TTextHighlighter;
 begin
   ASpans := nil;
   Count  := 0;
@@ -273,7 +369,22 @@ begin
       AppendSpan(ASpans, Count, 0, Len, clGreen, False);
 
     lkCode:
-      AppendSpan(ASpans, Count, 0, Len, clBrightBlack, False);
+      begin
+        if (ARow >= 0) and (ARow < FKindCount) and (FCodeLang[ARow] <> '') then
+        begin
+          HL := EmbeddedHL(FCodeLang[ARow]);
+          if Assigned(HL) then
+          begin
+            HL.GetSpans(ARow, ALine, ASpans);
+            SetLength(ASpans, Length(ASpans));
+            Count := Length(ASpans);
+          end
+          else
+            AppendSpan(ASpans, Count, 0, Len, clBrightBlack, False);
+        end
+        else
+          AppendSpan(ASpans, Count, 0, Len, clBrightBlack, False);
+      end;
 
     lkCodeFence:
       AppendSpan(ASpans, Count, 0, Len, clBrightBlack, False);

@@ -102,6 +102,7 @@ type
     dcBullet,        { * / • }
     dcSelectedMark,  { > / ► }
     dcCheckOff,      { - / ☐ }  dcCheckOn,       { x / ☑ }
+    dcRadioOff,      { ( ) / ○ }  dcRadioOn,     { (*) / ● }
     { Text overflow }
     dcEllipsis,      { ~ / … }
     { Progress bar }

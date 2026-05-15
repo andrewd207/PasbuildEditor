@@ -19,7 +19,10 @@ uses
   TermUI.Terminal, TermUI.Control, TermUI.Forms, TermUI.Application;
 
 type
-  TMenuItemKind = (mikNormal, mikHeader, mikSeparator);
+  TMenuItemKind = (mikNormal, mikHeader, mikSeparator, mikRadio, mikCheck, mikSubmenu);
+
+  TMenuItem = class;
+  TMenuItemList = specialize TFPGObjectList<TMenuItem>;
 
   TMenuItem = class
   public
@@ -33,6 +36,10 @@ type
     DimItem:  Boolean;  // render label+value in dim/gray (e.g. inactive modules)
     DimValue: Boolean;  // render value only in dim/gray (e.g. "(none)")
     MarkOld:  Boolean;  // render value in yellow (e.g. older available versions)
+    Checked:  Boolean;  // checked state for mikCheck and mikRadio items
+    GroupTag: Integer;  // radio group ID; items with the same GroupTag in the same
+                        // list are mutually exclusive (0 = ungrouped)
+    SubItems: TMenuItemList;  // owned; non-nil only for mikSubmenu items
     Action:  TNotifyEvent;
     constructor Create(const ALabel: string; AAction: TNotifyEvent = nil;
       const AValue: string = ''; AHotkey: Char = #0; AHint: String = '');
@@ -40,8 +47,16 @@ type
       const AValue: string = ''; AHint: String = '');
     constructor CreateHeader(const ALabel: string);
     constructor CreateSeparator;
+    { Creates a radio button item.  AGroupTag groups mutually exclusive items. }
+    constructor CreateRadio(const ALabel: string; AGroupTag: Integer;
+      AAction: TNotifyEvent = nil; AChecked: Boolean = False);
+    { Creates a checkbox item. }
+    constructor CreateCheck(const ALabel: string; AAction: TNotifyEvent = nil;
+      AChecked: Boolean = False);
+    { Creates a submenu item.  Populate SubItems after construction. }
+    constructor CreateSubmenu(const ALabel: string; AHotkey: Char = #0);
+    destructor Destroy; override;
   end;
-  TMenuItemList = specialize TFPGObjectList<TMenuItem>;
 
   { A single page of menu items with keyboard navigation.
     Extends TForm so it integrates with TApplication.ShowModal. }
@@ -355,6 +370,48 @@ begin
   Enabled := False;
 end;
 
+constructor TMenuItem.CreateRadio(const ALabel: string; AGroupTag: Integer;
+  AAction: TNotifyEvent; AChecked: Boolean);
+begin
+  inherited Create;
+  Kind     := mikRadio;
+  Label_   := ALabel;
+  Hotkey   := #0;
+  Enabled  := True;
+  Checked  := AChecked;
+  GroupTag := AGroupTag;
+  Action   := AAction;
+end;
+
+constructor TMenuItem.CreateCheck(const ALabel: string; AAction: TNotifyEvent;
+  AChecked: Boolean);
+begin
+  inherited Create;
+  Kind     := mikCheck;
+  Label_   := ALabel;
+  Hotkey   := #0;
+  Enabled  := True;
+  Checked  := AChecked;
+  GroupTag := 0;
+  Action   := AAction;
+end;
+
+constructor TMenuItem.CreateSubmenu(const ALabel: string; AHotkey: Char);
+begin
+  inherited Create;
+  Kind     := mikSubmenu;
+  Label_   := ALabel;
+  Hotkey   := AHotkey;
+  Enabled  := True;
+  SubItems := TMenuItemList.Create(True);
+end;
+
+destructor TMenuItem.Destroy;
+begin
+  SubItems.Free;
+  inherited;
+end;
+
 { ══════════════════════════════════════════════════════════════════════
   TMenu
   ══════════════════════════════════════════════════════════════════════ }
@@ -408,7 +465,7 @@ end;
 function TMenu.Selectable(I: Integer): Boolean;
 begin
   Result := (I >= 0) and (I < FItems.Count) and
-            (FItems[I].Kind = mikNormal) and FItems[I].Enabled;
+            (FItems[I].Kind in [mikNormal, mikRadio, mikCheck, mikSubmenu]) and FItems[I].Enabled;
 end;
 
 function TMenu.NextSel(From, Dir: Integer): Integer;
@@ -495,7 +552,7 @@ begin
       end;
       Term.ResetColors;
     end;
-    mikNormal: begin
+    mikNormal, mikRadio, mikCheck: begin
       if IsSel then
       begin
         ColorSelFG;
@@ -505,6 +562,23 @@ begin
       begin
         if Item.DimItem then ColorDim else ColorNormal;
         Term.WriteStr('   ');
+      end;
+      { Radio / check glyph }
+      if Item.Kind = mikRadio then
+      begin
+        if IsSel then Term.SetFG(clBlack) else Term.SetFG(clBrightCyan);
+        if Item.Checked then Application.DrawChar(dcRadioOn)
+        else                 Application.DrawChar(dcRadioOff);
+        Term.WriteStr(' ');
+        if IsSel then ColorSelFG else ColorNormal;
+      end
+      else if Item.Kind = mikCheck then
+      begin
+        if IsSel then Term.SetFG(clBlack) else Term.SetFG(clBrightCyan);
+        if Item.Checked then Application.DrawChar(dcCheckOn)
+        else                 Application.DrawChar(dcCheckOff);
+        Term.WriteStr(' ');
+        if IsSel then ColorSelFG else ColorNormal;
       end;
       { Write label, highlighting the hotkey letter in place }
       if (not IsSel) and Item.DimItem then
@@ -527,6 +601,15 @@ begin
           ColorValue;
         Term.WriteStr(' : ' + Item.Value);
       end;
+      Term.ResetColors;
+    end;
+    mikSubmenu: begin
+      if IsSel then begin ColorSelFG; Term.WriteStr(' > '); end
+      else          begin ColorNormal; Term.WriteStr('   '); end;
+      WriteLabelWithHotkey(Item.Label_, Item.Hotkey, IsSel, COL_LABEL_W);
+      { Arrow indicator on the right }
+      if IsSel then Term.SetFG(clBlack) else Term.SetFG(clBrightCyan);
+      Application.DrawChar(dcArrowRight);
       Term.ResetColors;
     end;
   end;

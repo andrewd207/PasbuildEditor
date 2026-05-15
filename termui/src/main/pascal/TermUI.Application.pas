@@ -349,6 +349,7 @@ begin
     FDrawingChars[dcBullet]         := '•';
     FDrawingChars[dcSelectedMark]   := '►';
     FDrawingChars[dcCheckOff]       := '☐';   FDrawingChars[dcCheckOn]       := '☑';
+    FDrawingChars[dcRadioOff]       := '○';   FDrawingChars[dcRadioOn]       := '●';
     FDrawingChars[dcEllipsis]       := '…';
     FDrawingChars[dcProgressFull]   := '█';   FDrawingChars[dcProgressEmpty] := '░';
     FDrawingChars[dcClose]          := '×';
@@ -378,6 +379,7 @@ begin
     FDrawingChars[dcBullet]         := '*';
     FDrawingChars[dcSelectedMark]   := '>';
     FDrawingChars[dcCheckOff]       := '-';   FDrawingChars[dcCheckOn]       := 'x';
+    FDrawingChars[dcRadioOff]       := 'o';   FDrawingChars[dcRadioOn]       := '*';
     FDrawingChars[dcEllipsis]       := '~';
     FDrawingChars[dcProgressFull]   := '#';   FDrawingChars[dcProgressEmpty] := '.';
     FDrawingChars[dcClose]          := 'x';

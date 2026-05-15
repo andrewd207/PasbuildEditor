@@ -29,7 +29,7 @@ uses
 {$ELSE}
 uses
 {$ENDIF}
-  SysUtils, StrUtils, TermUI.StringUtils,
+  Classes, SysUtils, StrUtils, TermUI.StringUtils,
   TermUI.Terminal,
   TermUI.Application,
   TermUI.Forms,
@@ -39,8 +39,10 @@ uses
   TermUI.Menu,
   TermUI.MenuBar,
   TermUI.Form.FileDialog,
+  TermUI.Highlighter.Pascal,
   TermUI.Highlighter.AsciiDoc,
-  TermUI.Highlighter.XML;
+  TermUI.Highlighter.XML,
+  TermUI.Highlighter.Markdown;
 
 const
   HINT_ROWS = 1;
@@ -48,14 +50,16 @@ const
 type
   TEditorForm = class(TForm)
   private
-    FTitleBar: TTitleBar;
-    FEditor:   TTextEditor;
-    FMenuBar:  TMenuBar;
-    FFilePath: string;
-    FModified: Boolean;
+    FTitleBar:   TTitleBar;
+    FEditor:     TTextEditor;
+    FMenuBar:    TMenuBar;
+    FEditMenu:   TMenuBarItem;    { Edit top-level item; used to rebuild submenu }
+    FFilePath:   string;
+    FModified:   Boolean;
 
     procedure EditorChanged(Sender: TObject);
     procedure UpdateTitleBar;
+    procedure BuildHighlighterSubmenu;
 
     function  CheckSave: Boolean;
     procedure DoNew(Sender: TObject = nil);
@@ -63,7 +67,7 @@ type
     procedure DoSave(Sender: TObject = nil);
     procedure DoSaveAs(Sender: TObject = nil);
     procedure DoQuit(Sender: TObject = nil);
-    procedure DoSelectHighlighter(Sender: TObject = nil);
+    procedure DoSelectHighlighterItem(Sender: TObject);
 
     procedure OpenFile(const APath: string);
     procedure ApplyHighlighterForPath(const APath: string);
@@ -101,7 +105,7 @@ end;
 
 constructor TEditorForm.Create(const ATitle: string);
 var
-  FileMenu, EditMenu, HelpMenu: TMenuBarItem;
+  FileMenu, HelpMenu: TMenuBarItem;
 begin
   inherited Create(ATitle);
 
@@ -131,8 +135,8 @@ begin
   FileMenu.Items.Add(TMenuItem.CreateSeparator);
   FileMenu.Items.Add(TMenuItem.CreateEmbeddedHotkey('&Quit',    @DoQuit));
 
-  EditMenu := FMenuBar.AddItem('&Edit');
-  EditMenu.Items.Add(TMenuItem.CreateEmbeddedHotkey('Select &Highlighter', @DoSelectHighlighter));
+  FEditMenu := FMenuBar.AddItem('&Edit');
+  BuildHighlighterSubmenu;
 
   HelpMenu := FMenuBar.AddItem('&Help');
   HelpMenu.Items.Add(TMenuItem.CreateEmbeddedHotkey('&About', nil));
@@ -220,6 +224,7 @@ begin
   if Assigned(FEditor.Highlighter) then
     FEditor.Highlighter.Free;
   FEditor.Highlighter := HL;
+  BuildHighlighterSubmenu;
 end;
 
 procedure TEditorForm.OpenFile(const APath: string);
@@ -242,6 +247,7 @@ begin
   FFilePath := '';
   FModified := False;
   UpdateTitleBar;
+  BuildHighlighterSubmenu;
   Invalidate;
 end;
 
@@ -315,9 +321,61 @@ begin
   if CheckSave then Application.Terminate;
 end;
 
-procedure TEditorForm.DoSelectHighlighter(Sender: TObject);
+procedure TEditorForm.BuildHighlighterSubmenu;
+const
+  HLGroup = 1;
+var
+  Names:   TStringList;
+  I:       Integer;
+  SubItem: TMenuItem;
+  HLItem:  TMenuItem;
+  Current: string;
 begin
-  { Placeholder — highlighter selection dialog not yet implemented. }
+  FEditMenu.Items.Clear;
+  if Assigned(FEditor.Highlighter) then
+    Current := FEditor.Highlighter.Name
+  else
+    Current := 'None';
+
+  HLItem := TMenuItem.CreateSubmenu('Highlighter');
+
+  Names := TStringList.Create;
+  try
+    GetHighlighterNames(Names);
+
+    SubItem := TMenuItem.CreateRadio('None', HLGroup, @DoSelectHighlighterItem,
+                 Current = 'None');
+    HLItem.SubItems.Add(SubItem);
+
+    for I := 0 to Names.Count - 1 do
+    begin
+      SubItem := TMenuItem.CreateRadio(Names[I], HLGroup,
+                   @DoSelectHighlighterItem, Names[I] = Current);
+      HLItem.SubItems.Add(SubItem);
+    end;
+  finally
+    Names.Free;
+  end;
+
+  FEditMenu.Items.Add(HLItem);
+end;
+
+procedure TEditorForm.DoSelectHighlighterItem(Sender: TObject);
+var
+  Item: TMenuItem;
+  HL:   TTextHighlighter;
+begin
+  Item := TMenuItem(Sender);
+  if Assigned(FEditor.Highlighter) then
+    FEditor.Highlighter.Free;
+
+  if Item.Label_ = 'None' then
+    HL := nil
+  else
+    HL := FindHighlighterByName(Item.Label_);
+
+  FEditor.Highlighter := HL;
+  Invalidate;
 end;
 
 function TEditorForm.DoKeyDown(var Key: TKeyEvent): Boolean;

@@ -47,9 +47,15 @@ type
     procedure Prepare(ALines: TStrings); override;
     procedure GetSpans(ARow: Integer; const ALine: string;
       out ASpans: TTextSpanArray); override;
+    function Name: string; override;
   end;
 
 implementation
+
+function TXMLHighlighter.Name: string;
+begin
+  Result := 'XML';
+end;
 
 procedure TXMLHighlighter.AppendSpan(var ASpans: TTextSpanArray;
   var ACount: Integer; ACol, ALen: Integer; AFG: TColor);

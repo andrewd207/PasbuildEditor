@@ -89,16 +89,28 @@ type
        2  = Esc         (caller should close the popup but keep bar visible) }
   TMenuBarDropDown = class(TForm)
   private
-    FItemList: TMenuItemList;  { NOT owned — points to TMenuBarItem.Items }
-    FSel:      Integer;
-    FExitDir:  Integer;
-    FSelected: TMenuItem;
-    FRunning:  Boolean;
-    FOriginX:  Integer;
+    FItemList:   TMenuItemList;  { NOT owned — points to TMenuBarItem.Items }
+    FSel:        Integer;
+    FExitDir:    Integer;
+    FSelected:   TMenuItem;
+    FRunning:    Boolean;
+    FOriginX:    Integer;
+    FSubFocused: Boolean;   { True when keyboard focus is inside the sub-panel }
+    FSubSel:     Integer;   { selection within the current sub-panel (-1 = none) }
+
     function  Selectable(I: Integer): Boolean;
     function  NextSel(AFrom, ADir: Integer): Integer;
     function  CalcWidth: Integer;
     function  ContentRows: Integer;
+
+    { Sub-panel helpers (operate on the SubItems of FItemList[FSel]) }
+    function  SubItems: TMenuItemList;
+    function  SubSelectable(I: Integer): Boolean;
+    function  SubNextSel(AFrom, ADir: Integer): Integer;
+    function  SubCalcWidth: Integer;
+    procedure InitSubSel;     { set FSubSel to checked radio or first selectable }
+    procedure PaintSubPanel;  { draw the sub-panel box to the right of the dropdown }
+    procedure DoRadioManagement(AList: TMenuItemList; AItem: TMenuItem);
   protected
     procedure DoPaint; override;
     function  DoKeyDown(var Key: TKeyEvent): Boolean; override;
@@ -191,7 +203,8 @@ end;
 function TMenuBarDropDown.Selectable(I: Integer): Boolean;
 begin
   Result := (I >= 0) and (I < FItemList.Count) and
-            (FItemList[I].Kind = mikNormal) and FItemList[I].Enabled;
+            (FItemList[I].Kind in [mikNormal, mikRadio, mikCheck, mikSubmenu]) and
+            FItemList[I].Enabled;
 end;
 
 function TMenuBarDropDown.NextSel(AFrom, ADir: Integer): Integer;
@@ -227,6 +240,18 @@ begin
             Inc(L, 2 + Length(FItemList[I].Value));
           if L > Result then Result := L;
         end;
+      mikRadio, mikCheck:
+        begin
+          { " > ○ Label " — 4 prefix + glyph(1) + space(1) + 2 suffix }
+          L := 4 + 1 + 1 + Length(FItemList[I].Label_) + 2;
+          if L > Result then Result := L;
+        end;
+      mikSubmenu:
+        begin
+          { " > Label → " — 4 prefix + label + space(1) + arrow(1) + 1 suffix }
+          L := 4 + Length(FItemList[I].Label_) + 3;
+          if L > Result then Result := L;
+        end;
       mikHeader:
         begin
           L := 2 + Length(FItemList[I].Label_) + 2;
@@ -253,16 +278,256 @@ begin
     inherited SetBounds(ALeft, ATop, AWidth, AHeight);
 end;
 
+function TMenuBarDropDown.SubItems: TMenuItemList;
+begin
+  if (FSel >= 0) and (FSel < FItemList.Count) and
+     (FItemList[FSel].Kind = mikSubmenu) then
+    Result := FItemList[FSel].SubItems
+  else
+    Result := nil;
+end;
+
+function TMenuBarDropDown.SubSelectable(I: Integer): Boolean;
+var
+  SI: TMenuItemList;
+begin
+  SI := SubItems;
+  Result := (SI <> nil) and (I >= 0) and (I < SI.Count) and
+            (SI[I].Kind in [mikNormal, mikRadio, mikCheck]) and SI[I].Enabled;
+end;
+
+function TMenuBarDropDown.SubNextSel(AFrom, ADir: Integer): Integer;
+var
+  SI:    TMenuItemList;
+  I, T:  Integer;
+begin
+  SI := SubItems;
+  Result := AFrom;
+  if SI = nil then Exit;
+  I := AFrom + ADir;
+  T := 0;
+  while T < SI.Count do
+  begin
+    if I < 0 then I := SI.Count - 1;
+    if I >= SI.Count then I := 0;
+    if SubSelectable(I) then begin Result := I; Exit; end;
+    Inc(I, ADir);
+    Inc(T);
+  end;
+end;
+
+function TMenuBarDropDown.SubCalcWidth: Integer;
+var
+  SI: TMenuItemList;
+  I, L: Integer;
+begin
+  Result := 12;
+  SI := SubItems;
+  if SI = nil then Exit;
+  for I := 0 to SI.Count - 1 do
+  begin
+    case SI[I].Kind of
+      mikNormal:
+        begin
+          L := 4 + Length(SI[I].Label_) + 2;
+          if L > Result then Result := L;
+        end;
+      mikRadio, mikCheck:
+        begin
+          L := 4 + 1 + 1 + Length(SI[I].Label_) + 2;
+          if L > Result then Result := L;
+        end;
+      mikHeader:
+        begin
+          L := 2 + Length(SI[I].Label_) + 2;
+          if L > Result then Result := L;
+        end;
+    end;
+  end;
+end;
+
+procedure TMenuBarDropDown.InitSubSel;
+var
+  SI: TMenuItemList;
+  I:  Integer;
+begin
+  FSubSel := -1;
+  SI := SubItems;
+  if SI = nil then Exit;
+  { Prefer the currently-checked radio item }
+  for I := 0 to SI.Count - 1 do
+    if (SI[I].Kind = mikRadio) and SI[I].Checked then
+    begin
+      FSubSel := I;
+      Exit;
+    end;
+  { Fall back to first selectable }
+  FSubSel := SubNextSel(-1, 1);
+end;
+
+procedure TMenuBarDropDown.DoRadioManagement(AList: TMenuItemList; AItem: TMenuItem);
+var
+  I: Integer;
+begin
+  if AItem.Kind = mikRadio then
+  begin
+    if AItem.GroupTag <> 0 then
+      for I := 0 to AList.Count - 1 do
+        if (AList[I].Kind = mikRadio) and (AList[I].GroupTag = AItem.GroupTag) then
+          AList[I].Checked := False;
+    AItem.Checked := True;
+  end
+  else if AItem.Kind = mikCheck then
+    AItem.Checked := not AItem.Checked;
+end;
+
+procedure TMenuBarDropDown.PaintSubPanel;
+var
+  SI:      TMenuItemList;
+  SubW, SubH: Integer;
+  SubLeft, SubTop: Integer;
+  InnerW:  Integer;
+  I, Row:  Integer;
+  Item:    TMenuItem;
+  IsSel:   Boolean;
+  J, AccelPos: Integer;
+begin
+  SI := SubItems;
+  if (SI = nil) or (SI.Count = 0) then Exit;
+
+  SubW    := SubCalcWidth;
+  SubH    := 2 + SI.Count;
+  { Position: share the right border of the main dropdown }
+  SubLeft := Left + Width - 1;
+  { Align top with the selected item's screen row: item I is at local row 2+I,
+    screen row Top + (2+I) - 1 = Top + I + 1 }
+  SubTop  := Top + FSel + 1;
+
+  { Clamp: if it would go off the right, open to the left instead }
+  if SubLeft + SubW - 1 > Term.Width then
+    SubLeft := Left - SubW + 1;
+  if SubLeft < 1 then SubLeft := 1;
+
+  { Clamp vertically }
+  if SubTop + SubH - 1 > Term.Height then
+    SubTop := Term.Height - SubH + 1;
+  if SubTop < 1 then SubTop := 1;
+
+  InnerW := SubW - 2;
+
+  { Border }
+  Term.SetFG(clWhite); Term.SetBG(clBlack);
+  Term.GotoXY(SubLeft, SubTop);
+  Application.DrawChar(dcTopLeft);
+  Term.WriteStr(Application.RepeatChar(dcHoriz, InnerW));
+  Application.DrawChar(dcTopRight);
+
+  Term.GotoXY(SubLeft, SubTop + SubH - 1);
+  Application.DrawChar(dcBottomLeft);
+  Term.WriteStr(Application.RepeatChar(dcHoriz, InnerW));
+  Application.DrawChar(dcBottomRight);
+
+  { Items }
+  Row := SubTop + 1;
+  for I := 0 to SI.Count - 1 do
+  begin
+    Item  := SI[I];
+    IsSel := FSubFocused and (I = FSubSel);
+
+    Term.GotoXY(SubLeft, Row);
+    Term.SetFG(clWhite); Term.SetBG(clBlack);
+    Application.DrawChar(dcVert);
+
+    case Item.Kind of
+      mikSeparator:
+        begin
+          Term.SetFG(clBrightBlack);
+          Term.WriteStr(StringOfChar('-', InnerW));
+        end;
+      mikHeader:
+        begin
+          Term.SetFG(clBrightYellow);
+          Term.WriteStr(' ' + Item.Label_);
+          J := 1 + Length(Item.Label_);
+          while J < InnerW do begin Term.WriteStr(' '); Inc(J); end;
+        end;
+      mikNormal, mikRadio, mikCheck:
+        begin
+          if IsSel then begin Term.SetFG(clBlack); Term.SetBG(clCyan); end
+          else          begin Term.SetFG(clWhite); Term.SetBG(clBlack); end;
+
+          if IsSel then Term.WriteStr(' > ')
+          else          Term.WriteStr('   ');
+
+          if Item.Kind = mikRadio then
+          begin
+            if IsSel then Term.SetFG(clBlack) else Term.SetFG(clBrightCyan);
+            if Item.Checked then Application.DrawChar(dcRadioOn)
+            else                 Application.DrawChar(dcRadioOff);
+            Term.WriteStr(' ');
+            if IsSel then begin Term.SetFG(clBlack); Term.SetBG(clCyan); end
+            else          begin Term.SetFG(clWhite); Term.SetBG(clBlack); end;
+          end
+          else if Item.Kind = mikCheck then
+          begin
+            if IsSel then Term.SetFG(clBlack) else Term.SetFG(clBrightCyan);
+            if Item.Checked then Application.DrawChar(dcCheckOn)
+            else                 Application.DrawChar(dcCheckOff);
+            Term.WriteStr(' ');
+            if IsSel then begin Term.SetFG(clBlack); Term.SetBG(clCyan); end
+            else          begin Term.SetFG(clWhite); Term.SetBG(clBlack); end;
+          end;
+
+          { Label with accel highlighted }
+          AccelPos := -1;
+          if Item.Hotkey <> #0 then
+            PosNeutral(UpCase(Item.Hotkey), UpperCase(Item.Label_), AccelPos);
+          for J := 0 to Length(Item.Label_) - 1 do
+          begin
+            if J = AccelPos then
+            begin
+              if IsSel then Term.SetFG(clBrightYellow) else Term.SetFG(clBrightCyan);
+              Term.SetUnderline(True);
+              Term.WriteStr(Item.Label_.Index[J]);
+              Term.SetUnderline(False);
+              if IsSel then Term.SetFG(clBlack) else Term.SetFG(clWhite);
+            end
+            else
+              Term.WriteStr(Item.Label_.Index[J]);
+          end;
+
+          { Pad to right border }
+          J := 3 + Length(Item.Label_);
+          if Item.Kind in [mikRadio, mikCheck] then Inc(J, 2);
+          while J < InnerW do begin Term.WriteStr(' '); Inc(J); end;
+
+          if IsSel then begin Term.SetFG(clBlack); Term.SetBG(clCyan); end
+          else          begin Term.SetFG(clWhite); Term.SetBG(clBlack); end;
+        end;
+    end;
+
+    Term.SetFG(clWhite); Term.SetBG(clBlack);
+    Application.DrawChar(dcVert);
+    Inc(Row);
+  end;
+
+  Term.ResetColors;
+end;
+
 procedure TMenuBarDropDown.Setup(AItems: TMenuItemList; AOriginX: Integer);
 var
   W, H, MaxLeft: Integer;
 begin
-  FItemList := AItems;
-  FSel      := -1;
-  FExitDir  := 2;
-  FSelected := nil;
+  FItemList   := AItems;
+  FSel        := -1;
+  FExitDir    := 2;
+  FSelected   := nil;
+  FSubFocused := False;
+  FSubSel     := -1;
   if (FItemList <> nil) and (FItemList.Count > 0) then
     FSel := NextSel(-1, 1);
+  if (FSel >= 0) and (FItemList[FSel].Kind = mikSubmenu) then
+    InitSubSel;
   W       := CalcWidth;
   H       := 2 + FItemList.Count;  { top border + items + bottom border }
   MaxLeft := Term.Width - W + 1;
@@ -328,7 +593,7 @@ begin
           Term.WriteStr(CopyNeutral(LStr, 0, InnerW));
         end;
 
-      mikNormal:
+      mikNormal, mikRadio, mikCheck:
         begin
           if IsSel then begin Term.SetFG(clBlack); Term.SetBG(clCyan); end
           else          begin Term.SetFG(clWhite); Term.SetBG(clBlack); end;
@@ -336,6 +601,26 @@ begin
           { Leading arrow }
           if IsSel then Term.WriteStr(' > ')
           else          Term.WriteStr('   ');
+
+          { Radio / check glyph }
+          if Item.Kind = mikRadio then
+          begin
+            if IsSel then Term.SetFG(clBlack) else Term.SetFG(clBrightCyan);
+            if Item.Checked then Application.DrawChar(dcRadioOn)
+            else                 Application.DrawChar(dcRadioOff);
+            Term.WriteStr(' ');
+            if IsSel then begin Term.SetFG(clBlack); Term.SetBG(clCyan); end
+            else          begin Term.SetFG(clWhite); Term.SetBG(clBlack); end;
+          end
+          else if Item.Kind = mikCheck then
+          begin
+            if IsSel then Term.SetFG(clBlack) else Term.SetFG(clBrightCyan);
+            if Item.Checked then Application.DrawChar(dcCheckOn)
+            else                 Application.DrawChar(dcCheckOff);
+            Term.WriteStr(' ');
+            if IsSel then begin Term.SetFG(clBlack); Term.SetBG(clCyan); end
+            else          begin Term.SetFG(clWhite); Term.SetBG(clBlack); end;
+          end;
 
           { Label with hotkey highlighted }
           AccelPos := -1;
@@ -368,8 +653,44 @@ begin
 
           { Pad to right border }
           J := 3 + Length(Item.Label_);
+          if Item.Kind in [mikRadio, mikCheck] then Inc(J, 2);  { glyph + space }
           if Item.Value <> '' then Inc(J, 2 + Length(Item.Value));
           while J < InnerW do begin Term.WriteStr(' '); Inc(J); end;
+
+          if IsSel then begin Term.SetFG(clBlack); Term.SetBG(clCyan); end
+          else          begin Term.SetFG(clWhite); Term.SetBG(clBlack); end;
+        end;
+      mikSubmenu:
+        begin
+          if IsSel then begin Term.SetFG(clBlack); Term.SetBG(clCyan); end
+          else          begin Term.SetFG(clWhite); Term.SetBG(clBlack); end;
+
+          if IsSel then Term.WriteStr(' > ')
+          else          Term.WriteStr('   ');
+
+          { Label }
+          AccelPos := -1;
+          if Item.Hotkey <> #0 then
+            PosNeutral(UpCase(Item.Hotkey), UpperCase(Item.Label_), AccelPos);
+          for J := 0 to Length(Item.Label_) - 1 do
+          begin
+            if J = AccelPos then
+            begin
+              if IsSel then Term.SetFG(clBrightYellow) else Term.SetFG(clBrightCyan);
+              Term.SetUnderline(True);
+              Term.WriteStr(Item.Label_.Index[J]);
+              Term.SetUnderline(False);
+              if IsSel then Term.SetFG(clBlack) else Term.SetFG(clWhite);
+            end
+            else
+              Term.WriteStr(Item.Label_.Index[J]);
+          end;
+
+          { Arrow indicator — right-justified }
+          J := 3 + Length(Item.Label_) + 1;  { +1 for the arrow }
+          while J < InnerW do begin Term.WriteStr(' '); Inc(J); end;
+          if IsSel then Term.SetFG(clBlack) else Term.SetFG(clBrightCyan);
+          Application.DrawChar(dcArrowRight);
 
           if IsSel then begin Term.SetFG(clBlack); Term.SetBG(clCyan); end
           else          begin Term.SetFG(clWhite); Term.SetBG(clBlack); end;
@@ -383,26 +704,129 @@ begin
   end;
 
   Term.ResetColors;
+  { Draw the sub-panel if the selected item is a submenu }
+  if (FSel >= 0) and (FSel < FItemList.Count) and
+     (FItemList[FSel].Kind = mikSubmenu) then
+    PaintSubPanel;
   inherited DoPaint;
 end;
 
 function TMenuBarDropDown.DoKeyDown(var Key: TKeyEvent): Boolean;
 var
-  I: Integer;
+  I:    Integer;
+  OldSel: Integer;
 begin
   Result := True;
+
+  if FSubFocused then
+  begin
+    { Keys while sub-panel has focus }
+    case Key.Code of
+      kcUp:
+        begin
+          FSubSel := SubNextSel(FSubSel, -1);
+          Invalidate;
+        end;
+      kcDown:
+        begin
+          FSubSel := SubNextSel(FSubSel, +1);
+          Invalidate;
+        end;
+      kcEscape, kcLeft:
+        begin
+          FSubFocused := False;
+          Invalidate;
+        end;
+      kcEnter:
+        begin
+          if SubSelectable(FSubSel) then
+          begin
+            FSelected := SubItems[FSubSel];
+            DoRadioManagement(SubItems, FSelected);
+            FExitDir := 0;
+            Close(1);
+          end;
+        end;
+      kcAltChar, kcChar:
+        begin
+          for I := 0 to SubItems.Count - 1 do
+            if SubSelectable(I) and (SubItems[I].Hotkey <> #0) and
+               (UpCase(SubItems[I].Hotkey) = UpCase(Key.Ch)) then
+            begin
+              FSubSel   := I;
+              FSelected := SubItems[I];
+              DoRadioManagement(SubItems, FSelected);
+              FExitDir  := 0;
+              Close(1);
+              Exit;
+            end;
+          Result := False;
+        end;
+    else
+      Result := False;
+    end;
+    Exit;
+  end;
+
+  { Keys while main panel has focus }
   case Key.Code of
-    kcUp:     begin FSel := NextSel(FSel, -1); Invalidate; end;
-    kcDown:   begin FSel := NextSel(FSel, +1); Invalidate; end;
-    kcLeft:   begin FExitDir := -1; Close(1); end;
-    kcRight:  begin FExitDir := +1; Close(1); end;
-    kcEscape: begin FExitDir :=  2; Close(1); end;
+    kcUp:
+      begin
+        OldSel := FSel;
+        FSel := NextSel(FSel, -1);
+        if FSel <> OldSel then
+        begin
+          FSubFocused := False;
+          if (FSel >= 0) and (FItemList[FSel].Kind = mikSubmenu) then
+            InitSubSel;
+        end;
+        Invalidate;
+      end;
+    kcDown:
+      begin
+        OldSel := FSel;
+        FSel := NextSel(FSel, +1);
+        if FSel <> OldSel then
+        begin
+          FSubFocused := False;
+          if (FSel >= 0) and (FItemList[FSel].Kind = mikSubmenu) then
+            InitSubSel;
+        end;
+        Invalidate;
+      end;
+    kcLeft:
+      begin
+        if FSubFocused then
+          begin FSubFocused := False; Invalidate; end
+        else
+          begin FExitDir := -1; Close(1); end;
+      end;
+    kcRight:
+      begin
+        if (FSel >= 0) and (FItemList[FSel].Kind = mikSubmenu) then
+        begin
+          FSubFocused := True;
+          Invalidate;
+        end
+        else
+          begin FExitDir := +1; Close(1); end;
+      end;
+    kcEscape:
+      begin FExitDir := 2; Close(1); end;
     kcEnter:
       begin
-        if Selectable(FSel) then
+        if (FSel >= 0) and (FItemList[FSel].Kind = mikSubmenu) then
+        begin
+          FSubFocused := True;
+          Invalidate;
+        end
+        else if Selectable(FSel) then
+        begin
           FSelected := FItemList[FSel];
-        FExitDir := 0;
-        Close(1);
+          DoRadioManagement(FItemList, FSelected);
+          FExitDir := 0;
+          Close(1);
+        end;
       end;
     kcAltChar, kcChar:
       begin
@@ -410,10 +834,20 @@ begin
           if Selectable(I) and (FItemList[I].Hotkey <> #0) and
              (UpCase(FItemList[I].Hotkey) = UpCase(Key.Ch)) then
           begin
-            FSel      := I;
-            FSelected := FItemList[I];
-            FExitDir  := 0;
-            Close(1);
+            FSel := I;
+            if FItemList[I].Kind = mikSubmenu then
+            begin
+              InitSubSel;
+              FSubFocused := True;
+              Invalidate;
+            end
+            else
+            begin
+              FSelected := FItemList[I];
+              DoRadioManagement(FItemList, FSelected);
+              FExitDir  := 0;
+              Close(1);
+            end;
             Exit;
           end;
         Result := False;
@@ -554,7 +988,7 @@ begin
 
     if Dir = 0 then
     begin
-      { Item selected — execute action and close bar }
+      { Item selected — radio/check state already managed in DoKeyDown }
       if Assigned(Sel) and Assigned(Sel.Action) then
         Sel.Action(Sel);
       Close(1);

@@ -15,10 +15,7 @@
       <option>--all --format=plain</option>
     </frameworkOptions>
   </test>
-  <dependencies>
-    <dependency>
-      <name>pasbuildeditor-termui</name>
-      <version>1.0.0</version>
-    </dependency>
-  </dependencies>
+  <moduleDependencies>
+    <module>../../termui</module>
+  </moduleDependencies>
 </project>

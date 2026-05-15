@@ -50,11 +50,14 @@ type
     to resolve multi-line constructs) before individual lines are painted. }
   TTextHighlighter = class
   public
+    constructor Create; virtual;
     { Called once before painting begins, with all lines. }
     procedure Prepare(ALines: TStrings); virtual;
     { Return color spans for line ARow (0-based). ALine is the plain text. }
     procedure GetSpans(ARow: Integer; const ALine: string;
       out ASpans: TTextSpanArray); virtual;
+    { Human-readable name shown in highlighter-selection UI. }
+    function Name: string; virtual;
   end;
 
   TTextHighlighterClass = class of TTextHighlighter;
@@ -168,9 +171,23 @@ procedure RegisterHighlighter(AClass: TTextHighlighterClass; const AExtensions: 
   or nil if none is registered.  Caller owns the returned object. }
 function FindHighlighterForExt(const AExt: string): TTextHighlighter;
 
+{ Return a new instance of the highlighter whose Name matches AName (case-
+  insensitive), or nil if none matches.  Caller owns the returned object. }
+function FindHighlighterByName(const AName: string): TTextHighlighter;
+
+{ Fill ANames with the Name of each unique registered highlighter class, in
+  registration order.  Duplicate class entries (different extensions) are
+  deduplicated.  Caller passes a TStringList to receive the results. }
+procedure GetHighlighterNames(ANames: TStrings);
+
 implementation
 
 { ── TTextHighlighter ── }
+
+constructor TTextHighlighter.Create;
+begin
+  inherited Create;
+end;
 
 procedure TTextHighlighter.Prepare(ALines: TStrings);
 begin
@@ -180,6 +197,11 @@ procedure TTextHighlighter.GetSpans(ARow: Integer; const ALine: string;
   out ASpans: TTextSpanArray);
 begin
   ASpans := nil;
+end;
+
+function TTextHighlighter.Name: string;
+begin
+  Result := 'Plain Text';
 end;
 
 { ── TTextEditor ── }
@@ -793,6 +815,47 @@ begin
       Result := GHighlighters[I].Cls.Create;
       Exit;
     end;
+end;
+
+function FindHighlighterByName(const AName: string): TTextHighlighter;
+var
+  I:    Integer;
+  Inst: TTextHighlighter;
+  N:    string;
+begin
+  Result := nil;
+  N := LowerCase(Trim(AName));
+  for I := 0 to High(GHighlighters) do
+  begin
+    Inst := GHighlighters[I].Cls.Create;
+    if LowerCase(Inst.Name) = N then
+    begin
+      Result := Inst;
+      Exit;
+    end;
+    Inst.Free;
+  end;
+end;
+
+procedure GetHighlighterNames(ANames: TStrings);
+var
+  I, J:  Integer;
+  Inst:  TTextHighlighter;
+  N:     string;
+  Found: Boolean;
+begin
+  ANames.Clear;
+  for I := 0 to High(GHighlighters) do
+  begin
+    Inst := GHighlighters[I].Cls.Create;
+    N    := Inst.Name;
+    Inst.Free;
+    Found := False;
+    for J := 0 to ANames.Count - 1 do
+      if ANames[J] = N then begin Found := True; Break; end;
+    if not Found then
+      ANames.Add(N);
+  end;
 end;
 
 initialization
