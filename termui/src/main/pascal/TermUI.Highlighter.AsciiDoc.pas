@@ -306,4 +306,7 @@ begin
   SetLength(ASpans, Count);
 end;
 
+initialization
+  RegisterHighlighter(TAsciiDocHighlighter, '.adoc;.asciidoc');
+
 end.

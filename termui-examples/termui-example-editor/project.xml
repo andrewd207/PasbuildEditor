@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+  <name>termui-example-editor</name>
+  <!-- version inherited from aggregator -->
+  <author>Andrew Haines</author>
+  <license>BSD-3-Clause</license>
+  <build>
+    <mainSource>Main.pas</mainSource>
+    <executableName>termui-example-editor</executableName>
+    <packaging>application</packaging>
+  </build>
+  <dependencies>
+    <dependency>
+      <name>pasbuildeditor-termui</name>
+      <version>1.0.0</version>
+    </dependency>
+  </dependencies>
+</project>

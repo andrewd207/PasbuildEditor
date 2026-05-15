@@ -40,6 +40,7 @@ type
     FUseUnicodeBorders: Boolean;
     FDrawingChars:       array[TDrawingChar] of string;
     function  GetActiveForm: TForm;
+    function  AnyInvalidated: Boolean;
     procedure DispatchKey(var Key: TKeyEvent);
     procedure RepaintActive;
     procedure HandleResize;
@@ -137,16 +138,34 @@ begin
     FOnKeyDown(Self, Key);
 end;
 
+function TApplication.AnyInvalidated: Boolean;
+var I, J: Integer; F: TForm;
+begin
+  for I := 0 to High(FFormStack) do
+  begin
+    F := FFormStack[I];
+    if F.Invalidated then Exit(True);
+    for J := 0 to F.ChildCount - 1 do
+      if F.GetChild(J).Invalidated then Exit(True);
+  end;
+  Result := False;
+end;
+
 procedure TApplication.RepaintActive;
 var
   N, First, I: Integer;
-  AF: TForm;
+  DirtyRow: Integer;
 begin
   N := Length(FFormStack);
   if N = 0 then Exit;
-  AF := FFormStack[N - 1];
-  if not AF.Invalidated then Exit;
-  Term.InvalidateFront;
+  if not AnyInvalidated then Exit;
+  DirtyRow := Term.TakeDirtyRowHint;
+  { Full repaint needed when row hint is absent or overlays are active. }
+  if (DirtyRow < 0) or (N > 1) then
+  begin
+    Term.InvalidateFront;
+    DirtyRow := -1;
+  end;
   { Walk down to find the topmost non-overlay; paint from there upward so all
     overlay layers appear on top of live content. }
   First := N - 1;
@@ -157,7 +176,10 @@ begin
     FFormStack[I].Invalidate;
     FFormStack[I].Paint;
   end;
-  Term.FlushOutput;
+  if DirtyRow >= 0 then
+    Term.FlushRow(DirtyRow)
+  else
+    Term.FlushOutput;
 end;
 
 procedure TApplication.HandleResize;

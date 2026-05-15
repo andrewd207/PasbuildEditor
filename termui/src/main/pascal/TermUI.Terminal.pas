@@ -41,7 +41,13 @@ type
     kcCtrlX, kcCtrlY, kcCtrlZ,
     { Function keys F1–F14 }
     kcF1, kcF2, kcF3, kcF4, kcF5, kcF6, kcF7,
-    kcF8, kcF9, kcF10, kcF11, kcF12, kcF13, kcF14
+    kcF8, kcF9, kcF10, kcF11, kcF12, kcF13, kcF14,
+    { Alt + printable character — Key.Ch holds the character.
+      On Unix: decoded from ESC + printable byte (xterm Alt encoding).
+      On Windows: decoded from VK with LEFT_ALT_PRESSED / RIGHT_ALT_PRESSED. }
+    kcAltChar,
+    { Alt+F1 }
+    kcAltF1
   );
 
   TKeyEvent = record
@@ -127,11 +133,15 @@ type
     FBufH:     Integer;
 
     { Current drawing state (pen) for back-buffer writes }
-    FCurX:     Integer;   // 1-based column
-    FCurY:     Integer;   // 1-based row
-    FCurFG:    TColor;
-    FCurBG:    TColor;
-    FCurUL:    Boolean;
+    FCurX:       Integer;   // 1-based column
+    FCurY:       Integer;   // 1-based row
+    FCurFG:      TColor;
+    FCurBG:      TColor;
+    FCurUL:      Boolean;
+    FCursorWant:    Boolean;   // desired visibility; emitted once by FlushOutput
+    FCursorX:       Integer;   // desired cursor display position (set by PlaceCursor)
+    FCursorY:       Integer;
+    FDirtyRowHint:  Integer;   // -1 = full flush; >=1 = only this screen row changed
 
     procedure AllocBuffers(W, H: Integer);
     procedure BlankBuffer(var Buf: TScreenBuffer);
@@ -170,14 +180,35 @@ type
     { Diff back vs front and emit only changed cells, then swap. }
     procedure FlushOutput; virtual;
 
+    { Diff only one screen row (1-based) and emit changes for that row only.
+      Does not require InvalidateFront — FFront is trusted for all other rows. }
+    procedure FlushRow(Y: Integer);
+
     { Mark the entire front buffer as dirty so the next FlushOutput redraws
       every cell. Call this before overlaying ephemeral messages on top of a
       screen that was partially updated by an inline editor. }
     procedure InvalidateFront;
 
-    { Cursor visibility — go direct; cursor is not buffered. }
-    procedure HideCursor; virtual; abstract;
-    procedure ShowCursor; virtual; abstract;
+    { Signal that only one screen row (1-based) changed this frame.
+      Application.RepaintActive reads this and calls FlushRow instead of
+      FlushOutput, avoiding full-screen cursor sweep. Pass -1 to clear. }
+    procedure HintDirtyRow(ARow: Integer);
+    function  TakeDirtyRowHint: Integer;
+
+    { Set where the visible terminal cursor should appear after FlushOutput.
+      Separate from GotoXY (the drawing pen) so that subsequent paint calls
+      do not silently move the cursor away from the edit point. }
+    procedure PlaceCursor(X, Y: Integer); virtual;
+
+    { Cursor visibility.
+      ShowCursor / HideCursor record intent; FlushOutput emits the actual
+      ESC sequence once at the end of the frame so overlays cannot
+      accidentally override the editor's cursor.
+      Override CommitCursorVisibility for platform-specific non-ANSI paths
+      (e.g. Win32 SetConsoleCursorInfo). }
+    procedure HideCursor; virtual;
+    procedure ShowCursor; virtual;
+    procedure CommitCursorVisibility(AWant: Boolean); virtual;
 
     procedure EnterAltScreen; virtual;
     procedure ExitAltScreen; virtual;
@@ -256,11 +287,17 @@ begin
 end;
 
 procedure TTerminal.InitColor;
+var W, H: Integer;
 begin
   FUseColor := IsTTY;
   FCurX  := 1; FCurY  := 1;
+  FCursorX := 1; FCursorY := 1;
   FCurFG := clDefault; FCurBG := clDefault; FCurUL := False;
-  AllocBuffers(80, 24);  { sensible default; resize on first flush }
+  FDirtyRowHint := -1;
+  W := Width; H := Height;
+  if W <= 0 then W := 80;
+  if H <= 0 then H := 24;
+  AllocBuffers(W, H);
 end;
 
 function TTerminal.UseColor: Boolean;
@@ -362,6 +399,10 @@ begin
   { Use #0 as sentinel — differs from every valid painted cell (spaces at minimum) }
   for I := 0 to High(FFront) do
     FFront[I].Ch := #0;
+  { Reset cursor intent — each frame's paint decides fresh. }
+  FCursorWant := False;
+  FCursorX    := 1;
+  FCursorY    := 1;
 end;
 
 { ── Flush: diff and emit ── }
@@ -396,7 +437,10 @@ begin
 
   LastX  := -1; LastY  := -1;
   LastFG := clDefault; LastBG := clDefault; LastUL := False;
-  Buf    := '';
+  { Hide cursor immediately so it does not flicker across the screen during
+    the diff pass.  Restored to FCursorWant at the very end. }
+  Buf    := #27'[?25l';
+  CommitCursorVisibility(False);
 
   for Y := 1 to H do
   begin
@@ -451,12 +495,101 @@ begin
       Emit(#27'[K');
   end;
 
-  { Always reposition cursor to the logical pen position and reset attributes }
+  { Reposition the terminal cursor to the requested display position, not the
+    drawing pen — they diverge whenever painting continues after PlaceCursor. }
   if FUseColor then Buf := Buf + #27'[0m';
-  Buf := Buf + #27'[' + IntToStr(FCurY) + ';' + IntToStr(FCurX) + 'f';
+  Buf := Buf + #27'[' + IntToStr(FCursorY) + ';' + IntToStr(FCursorX) + 'f';
+  { Emit cursor visibility once, after all painting, so overlays cannot
+    accidentally hide the cursor that a lower control requested. }
+  if FCursorWant then Buf := Buf + #27'[?25h'
+  else                 Buf := Buf + #27'[?25l';
   if Buf <> '' then
     RawWrite(Buf);
   Flush(Output);
+  CommitCursorVisibility(FCursorWant);
+end;
+
+procedure TTerminal.FlushRow(Y: Integer);
+var
+  X, Idx:  Integer;
+  B, F:    TScreenCell;
+  LastX:   Integer;
+  LastFG:  TColor;
+  LastBG:  TColor;
+  LastUL:  Boolean;
+  Buf:     string;
+begin
+  if (Y < 1) or (Y > FBufH) then Exit;
+  Buf    := #27'[?25l';
+  CommitCursorVisibility(False);
+  LastX  := -1;
+  LastFG := clDefault; LastBG := clDefault; LastUL := False;
+  for X := 1 to FBufW do
+  begin
+    Idx := CellIndex(X, Y);
+    B := FBack[Idx];
+    F := FFront[Idx];
+    if (B.Ch = F.Ch) and (B.FG = F.FG) and (B.BG = F.BG) and
+       (B.Underline = F.Underline) then
+      Continue;
+    if X <> LastX then
+    begin
+      Buf := Buf + #27'[' + IntToStr(Y) + ';' + IntToStr(X) + 'f';
+      LastX := X;
+    end;
+    if FUseColor then
+    begin
+      if (B.FG <> LastFG) or (B.BG <> LastBG) or (B.Underline <> LastUL) then
+      begin
+        Buf := Buf + #27'[' + IntToStr(FGCode[B.FG]) + ';' + IntToStr(BGCode[B.BG]);
+        if B.Underline then Buf := Buf + ';4' else Buf := Buf + ';24';
+        Buf := Buf + 'm';
+        LastFG := B.FG; LastBG := B.BG; LastUL := B.Underline;
+      end;
+    end;
+    Buf   := Buf + B.Ch;
+    Inc(LastX);
+    FFront[Idx] := B;
+  end;
+  if FUseColor then Buf := Buf + #27'[0m';
+  Buf := Buf + #27'[' + IntToStr(FCursorY) + ';' + IntToStr(FCursorX) + 'f';
+  if FCursorWant then Buf := Buf + #27'[?25h'
+  else                 Buf := Buf + #27'[?25l';
+  RawWrite(Buf);
+  Flush(Output);
+  CommitCursorVisibility(FCursorWant);
+end;
+
+procedure TTerminal.HintDirtyRow(ARow: Integer);
+begin
+  FDirtyRowHint := ARow;
+end;
+
+function TTerminal.TakeDirtyRowHint: Integer;
+begin
+  Result := FDirtyRowHint;
+  FDirtyRowHint := -1;
+end;
+
+procedure TTerminal.PlaceCursor(X, Y: Integer);
+begin
+  FCursorX := X;
+  FCursorY := Y;
+end;
+
+procedure TTerminal.ShowCursor;
+begin
+  FCursorWant := True;
+end;
+
+procedure TTerminal.HideCursor;
+begin
+  FCursorWant := False;
+end;
+
+procedure TTerminal.CommitCursorVisibility(AWant: Boolean);
+begin
+  { Base: ANSI handled in FlushOutput's Buf.  Override for non-ANSI paths. }
 end;
 
 procedure TTerminal.EnterAltScreen;

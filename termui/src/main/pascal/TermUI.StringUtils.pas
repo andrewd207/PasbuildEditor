@@ -42,8 +42,7 @@ function CharFromIndex(const AStr: string; AIndex: Integer): Char;
   (1-based). Returns 1 for ASCII or invalid leading bytes. }
 function UTF8SeqLen(const AStr: string; I: Integer): Integer;
 
-{ Returns the visual display width of AStr in terminal columns, counting each
-  UTF-8 codepoint as 1 column. }
+{ Returns the number of UTF-8 codepoints in AStr. }
 function UTF8VisualLen(const AStr: string): Integer;
 
 type
@@ -51,15 +50,41 @@ type
   private
     function  GetIndex(AIndex: Integer): Char;
     procedure SetIndex(AIndex: Integer; AValue: Char);
+    function  GetChar(ACharIdx: Integer): string;
+    function  GetCharLength: Integer;
+    function  GetSize: Integer;
+    { Returns the 1-based byte position of the start of the 0-based char at ACharIdx.
+      Returns Size+1 when ACharIdx is past the end. }
+    function  CharBytePos(ACharIdx: Integer): Integer;
+    { Returns the number of bytes spanned by ACharCount codepoints starting at
+      1-based byte position AByteStart. }
+    function  CharByteSpan(AByteStart, ACharCount: Integer): Integer;
   public
+    { Byte-level indexed access (0-based). Existing callers use this. }
     property Index[AIndex: Integer]: Char read GetIndex write SetIndex;
+
+    { UTF-8 codepoint access (0-based). Returns a 1–4-byte string for each char. }
+    property Chars[ACharIdx: Integer]: string read GetChar;
+
+    { Number of UTF-8 codepoints (characters), not bytes. }
+    property Length: Integer read GetCharLength;
+
+    { Number of bytes in the underlying string storage. }
+    property Size: Integer read GetSize;
+
+    { Returns a substring of ACount codepoints starting at 0-based codepoint
+      index AFrom. }
+    function Copy(AFrom, ACount: Integer): string;
+
+    { Removes ACount codepoints starting at 0-based codepoint index AFrom. }
+    procedure Delete(AFrom, ACount: Integer);
   end;
 
 implementation
 
 function CopyNeutral(const AStr: string; AFrom, ACount: Integer): string;
 begin
-  Result := Copy(AStr, AFrom + 1, ACount);
+  Result := System.Copy(AStr, AFrom + 1, ACount);
 end;
 
 function PosNeutral(const ASubStr, AStr: string; out AFoundPos: Integer): Boolean;
@@ -81,12 +106,12 @@ end;
 
 procedure DeleteNeutral(var AStr: string; AFrom, ACount: Integer);
 begin
-  Delete(AStr, AFrom + 1, ACount);
+  System.Delete(AStr, AFrom + 1, ACount);
 end;
 
 procedure InsertNeutral(var AStr: string; ACh: Char; APos: Integer);
 begin
-  Insert(ACh, AStr, APos + 1);
+  System.Insert(ACh, AStr, APos + 1);
 end;
 
 function CharFromIndex(const AStr: string; AIndex: Integer): Char;
@@ -109,12 +134,14 @@ var I: Integer;
 begin
   Result := 0;
   I := 1;
-  while I <= Length(AStr) do
+  while I <= System.Length(AStr) do
   begin
     Inc(Result);
     Inc(I, UTF8SeqLen(AStr, I));
   end;
 end;
+
+{ ── TStringHelper ── }
 
 function TStringHelper.GetIndex(AIndex: Integer): Char;
 begin
@@ -124,6 +151,70 @@ end;
 procedure TStringHelper.SetIndex(AIndex: Integer; AValue: Char);
 begin
   Self[AIndex + 1] := AValue;
+end;
+
+function TStringHelper.CharBytePos(ACharIdx: Integer): Integer;
+var CharCount: Integer;
+begin
+  Result := 1;
+  CharCount := 0;
+  while (Result <= System.Length(Self)) and (CharCount < ACharIdx) do
+  begin
+    Inc(Result, UTF8SeqLen(Self, Result));
+    Inc(CharCount);
+  end;
+end;
+
+function TStringHelper.CharByteSpan(AByteStart, ACharCount: Integer): Integer;
+var I, CharCount: Integer;
+begin
+  I := AByteStart;
+  CharCount := 0;
+  while (I <= System.Length(Self)) and (CharCount < ACharCount) do
+  begin
+    Inc(I, UTF8SeqLen(Self, I));
+    Inc(CharCount);
+  end;
+  Result := I - AByteStart;
+end;
+
+function TStringHelper.GetChar(ACharIdx: Integer): string;
+var BytePos, SeqLen: Integer;
+begin
+  BytePos := CharBytePos(ACharIdx);
+  if BytePos > System.Length(Self) then
+    Result := ''
+  else
+  begin
+    SeqLen := UTF8SeqLen(Self, BytePos);
+    Result := System.Copy(Self, BytePos, SeqLen);
+  end;
+end;
+
+function TStringHelper.GetCharLength: Integer;
+begin
+  Result := UTF8VisualLen(Self);
+end;
+
+function TStringHelper.GetSize: Integer;
+begin
+  Result := System.Length(Self);
+end;
+
+function TStringHelper.Copy(AFrom, ACount: Integer): string;
+var ByteStart, ByteLen: Integer;
+begin
+  ByteStart := CharBytePos(AFrom);
+  ByteLen   := CharByteSpan(ByteStart, ACount);
+  Result    := System.Copy(Self, ByteStart, ByteLen);
+end;
+
+procedure TStringHelper.Delete(AFrom, ACount: Integer);
+var ByteStart, ByteLen: Integer;
+begin
+  ByteStart := CharBytePos(AFrom);
+  ByteLen   := CharByteSpan(ByteStart, ACount);
+  System.Delete(Self, ByteStart, ByteLen);
 end;
 
 end.

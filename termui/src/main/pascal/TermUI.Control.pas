@@ -52,6 +52,7 @@ type
     FHeight:           Integer;
     FVisible:          Boolean;
     FEnabled:          Boolean;
+    FFocusable:        Boolean;
     FInvalidated:      Boolean;
     FForeColor:        TColor;
     FBackColor:        TColor;
@@ -101,6 +102,7 @@ type
     property Height:      Integer       read FHeight      write FHeight;
     property Visible:     Boolean       read FVisible     write FVisible;
     property Enabled:     Boolean       read FEnabled     write FEnabled;
+    property Focusable:   Boolean       read FFocusable   write FFocusable;
     property Invalidated: Boolean       read FInvalidated;
     property ForeColor: TColor read FForeColor write FForeColor;
     property BackColor: TColor read FBackColor write FBackColor;
@@ -117,6 +119,7 @@ begin
   inherited Create;
   FVisible    := True;
   FEnabled    := True;
+  FFocusable  := True;
   FInvalidated := True;
   FForeColor  := clDefault;
   FBackColor  := clDefault;

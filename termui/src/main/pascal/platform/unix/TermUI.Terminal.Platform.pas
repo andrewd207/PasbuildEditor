@@ -62,8 +62,6 @@ type
 
     function ReadKeyTimeout(out AKey: TKeyEvent; TimeoutMs: Integer): Boolean; override;
 
-    procedure HideCursor; override;
-    procedure ShowCursor; override;
     procedure EnterAltScreen; override;
     procedure ExitAltScreen; override;
   end;
@@ -353,8 +351,10 @@ begin
             'H': Result.Code := ModKey(kcHome,  P2);
             'F': Result.Code := ModKey(kcEnd,   P2);
             'Z': Result.Code := kcShiftTab;
-            { SS3 F-key letters when sent as CSI instead of SS3 }
-            'P': Result.Code := kcF1;
+            { SS3 F-key letters when sent as CSI instead of SS3.
+              With modifier P2=3 (Alt) → kcAltF1. }
+            'P': if P2 = 3 then Result.Code := kcAltF1
+                 else            Result.Code := kcF1;
             'Q': Result.Code := kcF2;
             'R': Result.Code := kcF3;
             'S': Result.Code := kcF4;
@@ -385,7 +385,14 @@ begin
           end;
         end;
         else
-          Result.Code := kcEscape;
+          { ESC + printable ASCII = Alt+key (xterm encoding) }
+          if (B2 >= 32) and (B2 <= 126) then
+          begin
+            Result.Code := kcAltChar;
+            Result.Ch   := Char(B2);
+          end
+          else
+            Result.Code := kcEscape;
       end;
     end;
     127: Result.Code := kcBackspace;
@@ -404,16 +411,6 @@ begin
   FPeeked     := True;
   FPeekedByte := B;
   AKey := ReadKey;
-end;
-
-procedure TUnixTerminal.HideCursor;
-begin
-  RawWrite(#27'[?25l');
-end;
-
-procedure TUnixTerminal.ShowCursor;
-begin
-  RawWrite(#27'[?25h');
 end;
 
 procedure TUnixTerminal.EnterAltScreen;

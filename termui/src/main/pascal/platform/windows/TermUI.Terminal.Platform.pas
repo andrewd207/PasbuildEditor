@@ -109,8 +109,7 @@ type
     procedure SetFG(C: TColor); override;
     procedure SetBG(C: TColor); override;
     procedure ResetColors; override;
-    procedure HideCursor; override;
-    procedure ShowCursor; override;
+    procedure CommitCursorVisibility(AWant: Boolean); override;
     procedure SetUnderline(AOn: Boolean); override;
     procedure EnterAltScreen; override;
     procedure ExitAltScreen; override;
@@ -255,7 +254,7 @@ begin
       VK_TAB:     if Ctrl  then Result.Code := kcCtrlTab
                 else if Shift then Result.Code := kcShiftTab
                 else               Result.Code := kcTab;
-      VK_F1:  Result.Code := kcF1;
+      VK_F1:  if Alt then Result.Code := kcAltF1 else Result.Code := kcF1;
       VK_F2:  Result.Code := kcF2;
       VK_F3:  Result.Code := kcF3;
       VK_F4:  Result.Code := kcF4;
@@ -296,8 +295,16 @@ begin
           #26: Result.Code := kcCtrlZ;
           #0: ;  { modifier-only keydown with no character — ignore }
           else begin
-            Result.Code := kcChar;
-            Result.Ch   := KE.AsciiChar;
+            if Alt and (KE.AsciiChar >= ' ') and (KE.AsciiChar <> #127) then
+            begin
+              Result.Code := kcAltChar;
+              Result.Ch   := KE.AsciiChar;
+            end
+            else
+            begin
+              Result.Code := kcChar;
+              Result.Ch   := KE.AsciiChar;
+            end;
           end;
         end;
       end;
@@ -411,18 +418,16 @@ begin
   end;
 end;
 
-procedure TWindowsTerminal.HideCursor;
-var
-  CI: CONSOLE_CURSOR_INFO;
+procedure TWindowsTerminal.CommitCursorVisibility(AWant: Boolean);
+var CI: CONSOLE_CURSOR_INFO;
 begin
-  if FAnsiMode then
-    WriteStr(#27'[?25l')
-  else
+  if not FAnsiMode then
   begin
     GetConsoleCursorInfo(FHOut, CI);
-    CI.bVisible := False;
+    CI.bVisible := AWant;
     SetConsoleCursorInfo(FHOut, CI);
   end;
+  { ANSI mode: handled by the ESC[?25h/l in FlushOutput's buffer }
 end;
 
 procedure TWindowsTerminal.SetUnderline(AOn: Boolean);
@@ -430,20 +435,6 @@ begin
   { Only available in ANSI/VT mode; legacy console has no underline attribute }
   if FAnsiMode and UseColor then
     WriteStr(IfThen(AOn, #27'[4m', #27'[24m'));
-end;
-
-procedure TWindowsTerminal.ShowCursor;
-var
-  CI: CONSOLE_CURSOR_INFO;
-begin
-  if FAnsiMode then
-    WriteStr(#27'[?25h')
-  else
-  begin
-    GetConsoleCursorInfo(FHOut, CI);
-    CI.bVisible := True;
-    SetConsoleCursorInfo(FHOut, CI);
-  end;
 end;
 
 procedure TWindowsTerminal.EnterAltScreen;

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project>
+  <name>termui-examples</name>
+  <version>1.0.0</version>
+  <author>Andrew Haines</author>
+  <license>BSD-3-Clause</license>
+
+  <build>
+    <packaging>pom</packaging>
+  </build>
+
+  <modules>
+    <module>termui-example-filedialog</module>
+    <module>termui-example-editor</module>
+  </modules>
+</project>

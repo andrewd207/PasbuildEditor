@@ -93,10 +93,19 @@ begin
 end;
 
 procedure TForm.AddChild(AControl: TControl);
+var I: Integer;
 begin
   FControls.Add(AControl);
+  { Set initial focus to the first focusable control. }
   if FFocusIndex < 0 then
-    FFocusIndex := 0;
+  begin
+    for I := 0 to FControls.Count - 1 do
+      if FControls[I].Enabled and FControls[I].Visible and FControls[I].Focusable then
+      begin
+        FFocusIndex := I;
+        Break;
+      end;
+  end;
 end;
 
 function TForm.ChildCount: Integer;
@@ -127,7 +136,7 @@ begin
   for I := 1 to N do
   begin
     Result := (Result + ADir + N) mod N;
-    if FControls[Result].Enabled and FControls[Result].Visible then
+    if FControls[Result].Enabled and FControls[Result].Visible and FControls[Result].Focusable then
       Exit;
   end;
 end;
