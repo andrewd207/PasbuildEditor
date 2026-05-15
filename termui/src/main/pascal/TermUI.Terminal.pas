@@ -141,7 +141,15 @@ function Term: TTerminal;
 
 implementation
 
-uses SysUtils, TermUI.StringUtils;
+{ Pull in the platform back-end so its initialization section fires and calls
+  RegisterTerminalFactory automatically.  The conditional matches the source
+  paths declared in project.xml, so exactly one platform unit is compiled. }
+uses
+  SysUtils, TermUI.StringUtils,
+  {$IF defined(WINDOWS) or defined(UNIX)}
+  TermUI.Terminal.Platform
+  {$ENDIF}
+  ;
 
 { ── ANSI code tables (same as before, now used only during flush) ── }
 
