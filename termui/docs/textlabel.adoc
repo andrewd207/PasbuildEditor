@@ -1,4 +1,4 @@
-= TermUI.Control.Label
+= TermUI.Control.TextLabel
 :toc:
 
 link:index.adoc[← Index]

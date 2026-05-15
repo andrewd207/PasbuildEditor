@@ -20,53 +20,49 @@ procedure ShowAboutPage;
 implementation
 
 uses
-  Classes, SysUtils,
+  Classes, SysUtils, Math,
   TermUI.Terminal, TermUI.Menu, TermUI.Forms, TermUI.Application,
+  TermUI.Control.Editor,
   PasbuildEditor.Consts,
   PasbuildEditor.UI.Colors;
+
+const
+  { Row at which the scrollable license text starts.
+    Matches the number of static header rows drawn by DrawStaticContent. }
+  LIC_START_ROW = 18;
 
 type
   TAboutForm = class(TForm)
   private
-    FLicLines:    TStringList;
-    FLicStartRow: Integer;
-    FLicPaneRows: Integer;
-    FLicScrollOff: Integer;
-    FMaxScroll:   Integer;
+    FLicEditor: TTextEditor;  { read-only scroll view for license text }
 
-    procedure ComputeLayout;
     procedure DrawStaticContent;
   protected
     procedure DoPaint; override;
+    procedure DoBoundsChanged; override;
     function  DoKeyDown(var Key: TKeyEvent): Boolean; override;
   public
     constructor Create(const ATitle: string = ''); override;
-    destructor  Destroy; override;
   end;
 
 constructor TAboutForm.Create(const ATitle: string);
 begin
   inherited Create(ATitle);
-  FLicLines := TStringList.Create;
-  FLicLines.Text := LICENSE_TEXT;
-  FLicScrollOff := 0;
+
+  FLicEditor          := TTextEditor.Create;
+  FLicEditor.ReadOnly := True;
+  FLicEditor.Lines.Text := LICENSE_TEXT;
+  AddChild(FLicEditor);
+
+  FLicEditor.SetBounds(1, LIC_START_ROW, Width,
+    Max(1, Height - LIC_START_ROW - 1));
 end;
 
-destructor TAboutForm.Destroy;
+procedure TAboutForm.DoBoundsChanged;
 begin
-  FLicLines.Free;
-  inherited;
-end;
-
-procedure TAboutForm.ComputeLayout;
-begin
-  { LicStartRow is set during DrawStaticContent; approximate here }
-  FLicStartRow  := 17;  { updated precisely in DrawStaticContent }
-  FLicPaneRows  := Term.Height - 2 - FLicStartRow + 1;
-  if FLicPaneRows < 1 then FLicPaneRows := 1;
-  FMaxScroll    := FLicLines.Count - FLicPaneRows;
-  if FMaxScroll < 0 then FMaxScroll := 0;
-  if FLicScrollOff > FMaxScroll then FLicScrollOff := FMaxScroll;
+  if FLicEditor = nil then Exit;
+  FLicEditor.SetBounds(1, LIC_START_ROW, Width,
+    Max(1, Height - LIC_START_ROW - 1));
 end;
 
 procedure TAboutForm.DrawStaticContent;
@@ -113,70 +109,31 @@ begin
   DrawRule(Row, 1, Term.Width); Inc(Row);
   Term.GotoXY(1, Row); Term.ClearToEOL;
   ColorHeader; Term.WriteStr('  License'); Term.ResetColors;
-  Inc(Row);
+  { Row is now LIC_START_ROW — license editor occupies LIC_START_ROW..Height-2 }
 
-  FLicStartRow := Row;
-  FLicPaneRows := Term.Height - 2 - FLicStartRow + 1;
-  if FLicPaneRows < 1 then FLicPaneRows := 1;
-  FMaxScroll   := FLicLines.Count - FLicPaneRows;
-  if FMaxScroll < 0 then FMaxScroll := 0;
-  if FLicScrollOff > FMaxScroll then FLicScrollOff := FMaxScroll;
   DrawRule(Term.Height - 1, 1, Term.Width);
+  Term.GotoXY(1, Term.Height); Term.ClearToEOL;
+  ColorHelp;
+  Term.WriteStr(' ↑↓/PgUp/PgDn Scroll license   Any other key to return ');
+  Term.ResetColors;
 end;
 
 procedure TAboutForm.DoPaint;
-var J, R, I: Integer;
 begin
   DrawStaticContent;
-
-  for J := 0 to FLicPaneRows - 1 do
-  begin
-    R := FLicStartRow + J;
-    I := FLicScrollOff + J;
-    Term.GotoXY(1, R); Term.ClearToEOL;
-    if (I < FLicLines.Count) and (Trim(FLicLines[I]) <> '') then
-    begin
-      ColorRule;
-      Term.WriteStr('  ' + FLicLines[I]);
-      Term.ResetColors;
-    end;
-  end;
-
-  Term.GotoXY(1, Term.Height); Term.ClearToEOL;
-  ColorHelp;
-  Term.WriteStr(' ↑↓ Scroll license   Any other key to return ');
-  if FMaxScroll > 0 then
-  begin
-    Term.GotoXY(Term.Width - 8, Term.Height);
-    Term.WriteStr(IntToStr(FLicScrollOff + 1) + '/' + IntToStr(FMaxScroll + 1));
-  end;
-  Term.ResetColors;
-
-  inherited DoPaint;
+  inherited DoPaint;  { paints FLicEditor child }
 end;
 
 function TAboutForm.DoKeyDown(var Key: TKeyEvent): Boolean;
 begin
-  Result := True;
-  case Key.Code of
-    kcUp:
-      if FLicScrollOff > 0 then begin Dec(FLicScrollOff); Invalidate; end;
-    kcDown:
-      if FLicScrollOff < FMaxScroll then begin Inc(FLicScrollOff); Invalidate; end;
-    kcPageUp: begin
-      FLicScrollOff := FLicScrollOff - FLicPaneRows;
-      if FLicScrollOff < 0 then FLicScrollOff := 0;
-      Invalidate;
-    end;
-    kcPageDown: begin
-      FLicScrollOff := FLicScrollOff + FLicPaneRows;
-      if FLicScrollOff > FMaxScroll then FLicScrollOff := FMaxScroll;
-      Invalidate;
-    end;
-    else begin
-      Close(1);
-      Result := False;
-    end;
+  { Scroll keys go to FLicEditor via normal focus dispatch }
+  Result := inherited DoKeyDown(Key);
+  if Result then
+    Invalidate  { ensure form repaints after scroll }
+  else
+  begin
+    Close(1);
+    Result := True;
   end;
 end;
 

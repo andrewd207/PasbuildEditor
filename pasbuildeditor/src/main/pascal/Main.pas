@@ -12,6 +12,7 @@ program Main;
 {$mode objfpc}{$H+}
 
 uses
+  {$IFDEF UNIX}cthreads,{$ENDIF}
   SysUtils, Process,
   PasbuildEditor.ProjectModel,
   TermUI.Terminal,

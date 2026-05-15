@@ -7,7 +7,7 @@
   Licensed under the BSD-3-Clause License. See LICENSE file for details.
 }
 
-unit TermUI.Control.Label;
+unit TermUI.Control.TextLabel;
 
 {$mode objfpc}{$H+}
 

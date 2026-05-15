@@ -73,6 +73,8 @@ type
 
 implementation
 
+uses Math;
+
 { ── Span helpers ── }
 
 procedure TAsciiDocHighlighter.AppendSpan(var ASpans: TTextSpanArray;

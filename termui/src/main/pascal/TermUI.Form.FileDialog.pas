@@ -40,7 +40,7 @@ unit TermUI.Form.FileDialog;
 interface
 
 uses
-  Classes, SysUtils, Masks,
+  Classes, SysUtils, fpMasks,
   TermUI.StringUtils, TermUI.Terminal,
   TermUI.Control, TermUI.Forms, TermUI.Application, TermUI.Menu;
 
@@ -129,6 +129,8 @@ function RunDirDialog(const AInitialDir: string; var APath: string;
 
 implementation
 
+uses Math;
+
 const
   HEADER_ROWS = 3;
   FOOTER_ROWS = 3;
@@ -183,7 +185,8 @@ end;
 procedure TFileDialog.LoadDir;
 var
   SR:   TSearchRec;
-  N:    Integer;
+  N, I: Integer;
+  E:    TFileEntry;
 begin
   FRawCount := 0;
   SetLength(FRaw, 64);
@@ -210,8 +213,8 @@ begin
   { Simple insertion sort — directory listings are small }
   for N := 1 to FRawCount - 1 do
   begin
-    var E := FRaw[N];
-    var I := N - 1;
+    E := FRaw[N];
+    I := N - 1;
     while (I >= 0) and
           ((FRaw[I].IsDir < E.IsDir) or
            ((FRaw[I].IsDir = E.IsDir) and
@@ -512,7 +515,7 @@ end;
 procedure TFileDialog.DrawFilenameField;
 var
   H, FieldW, Scroll: Integer;
-  Visible: string;
+  VisStr: string;
 begin
   H      := Term.Height;
   FieldW := Term.Width - 12;
@@ -524,8 +527,8 @@ begin
   Term.WriteStr(' Filename: ');
   Term.ResetColors;
   FilenameCalcScroll(Scroll);
-  Visible := CopyNeutral(FFilename, Scroll, FieldW);
-  Term.WriteStr(Visible);
+  VisStr := CopyNeutral(FFilename, Scroll, FieldW);
+  Term.WriteStr(VisStr);
   Term.ClearToEOL;
 end;
 

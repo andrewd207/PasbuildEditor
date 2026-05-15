@@ -30,7 +30,7 @@ unit TermUI.Control.Editor;
 interface
 
 uses
-  Classes, SysUtils, TermUI.Terminal, TermUI.Control, TermUI.StringUtils;
+  Classes, SysUtils, Math, TermUI.Terminal, TermUI.Control, TermUI.StringUtils;
 
 type
   { A single styled region within one line.
@@ -71,12 +71,13 @@ type
 
     procedure LinesChanged(Sender: TObject);
     procedure ClampCursor;
-    procedure EnsureVisible;
+    procedure EnsureVisStr;
     function  CurrentLine: string;
     function  LineCount: Integer;
     procedure SetReadOnly(AValue: Boolean);
     procedure SetWordWrap(AValue: Boolean);
     procedure SetHighlighter(AValue: TTextHighlighter);
+    function  GetLines: TStrings;
 
     { Editing primitives }
     procedure InsertChar(ACh: Char);
@@ -113,11 +114,15 @@ type
 
     { Lines is owned by the editor.  Assign content via Lines.Text,
       Lines.Add, Lines.LoadFromFile, etc. }
-    property Lines:       TStrings          read FLines;
+    property Lines:       TStrings          read GetLines;
     property ReadOnly:    Boolean           read FReadOnly    write SetReadOnly;
     property WordWrap:    Boolean           read FWordWrap    write SetWordWrap;
     { Not owned.  Set to nil to revert to plain rendering. }
     property Highlighter: TTextHighlighter  read FHighlighter write SetHighlighter;
+    { Scroll the view so the last line is visible. No-op in edit mode
+      (use MoveDocEnd instead). }
+    procedure ScrollToBottom;
+
     property CursorRow:   Integer           read FCurRow;
     property CursorCol:   Integer           read FCurCol;
     property OnChange:    TNotifyEvent      read FOnChange    write FOnChange;
@@ -161,6 +166,19 @@ begin
   if Assigned(FOnChange) then FOnChange(Self);
 end;
 
+procedure TTextEditor.ScrollToBottom;
+var MaxTop: Integer;
+begin
+  if Height <= 0 then Exit;
+  MaxTop := LineCount - Height;
+  if MaxTop < 0 then MaxTop := 0;
+  if FTopRow <> MaxTop then
+  begin
+    FTopRow := MaxTop;
+    Invalidate;
+  end;
+end;
+
 procedure TTextEditor.Clear;
 begin
   FLines.Clear;  { triggers LinesChanged }
@@ -191,6 +209,11 @@ begin
   Invalidate;
 end;
 
+function TTextEditor.GetLines: TStrings;
+begin
+  Result := FLines;
+end;
+
 function TTextEditor.LineCount: Integer;
 begin
   Result := FLines.Count;
@@ -218,7 +241,7 @@ begin
   if FCurCol > Len + 1 then FCurCol := Len + 1;
 end;
 
-procedure TTextEditor.EnsureVisible;
+procedure TTextEditor.EnsureVisStr;
 begin
   { Vertical }
   if FCurRow - 1 < FTopRow then
@@ -248,7 +271,7 @@ begin
   Insert(ACh, S, FCurCol);
   FLines[FCurRow - 1] := S;
   Inc(FCurCol);
-  EnsureVisible;
+  EnsureVisStr;
   { LinesChanged fires via OnChange }
 end;
 
@@ -262,7 +285,7 @@ begin
     DeleteNeutral(S, FCurCol - 2, 1);
     FLines[FCurRow - 1] := S;
     Dec(FCurCol);
-    EnsureVisible;
+    EnsureVisStr;
   end
   else if FCurRow > 1 then
   begin
@@ -271,7 +294,7 @@ begin
     FLines[FCurRow - 2] := FLines[FCurRow - 2] + FLines[FCurRow - 1];
     FLines.Delete(FCurRow - 1);
     Dec(FCurRow);
-    EnsureVisible;
+    EnsureVisStr;
   end;
 end;
 
@@ -305,7 +328,7 @@ begin
   FLines.Insert(FCurRow, Rest);
   Inc(FCurRow);
   FCurCol := 1;
-  EnsureVisible;
+  EnsureVisStr;
 end;
 
 procedure TTextEditor.DeleteToEOL;
@@ -340,7 +363,7 @@ begin
     Dec(FCurRow);
     FCurCol := Length(FLines[FCurRow - 1]) + 1;
   end;
-  EnsureVisible;
+  EnsureVisStr;
   Invalidate;
 end;
 
@@ -366,7 +389,7 @@ begin
     Inc(FCurRow);
     FCurCol := 1;
   end;
-  EnsureVisible;
+  EnsureVisStr;
   Invalidate;
 end;
 
@@ -379,7 +402,7 @@ begin
     Len := Length(FLines[FCurRow - 1]);
     if FCurCol > Len + 1 then FCurCol := Len + 1;
   end;
-  EnsureVisible;
+  EnsureVisStr;
   Invalidate;
 end;
 
@@ -392,21 +415,21 @@ begin
     Len := Length(FLines[FCurRow - 1]);
     if FCurCol > Len + 1 then FCurCol := Len + 1;
   end;
-  EnsureVisible;
+  EnsureVisStr;
   Invalidate;
 end;
 
 procedure TTextEditor.MoveHome;
 begin
   FCurCol := 1;
-  EnsureVisible;
+  EnsureVisStr;
   Invalidate;
 end;
 
 procedure TTextEditor.MoveEnd;
 begin
   FCurCol := Length(CurrentLine) + 1;
-  EnsureVisible;
+  EnsureVisStr;
   Invalidate;
 end;
 
@@ -421,7 +444,7 @@ procedure TTextEditor.MoveDocEnd;
 begin
   FCurRow := LineCount;
   FCurCol := Length(CurrentLine) + 1;
-  EnsureVisible;
+  EnsureVisStr;
   Invalidate;
 end;
 
@@ -446,7 +469,7 @@ begin
   else
   begin
     FCurRow := Max(1, FCurRow - Delta);
-    EnsureVisible;
+    EnsureVisStr;
   end;
   Invalidate;
 end;
@@ -462,7 +485,7 @@ begin
   else
   begin
     FCurRow := Min(LineCount, FCurRow + Delta);
-    EnsureVisible;
+    EnsureVisStr;
   end;
   Invalidate;
 end;
@@ -472,14 +495,14 @@ end;
 procedure TTextEditor.PaintLine(ADisplayRow: Integer; const ALine: string;
   const ASpans: TTextSpanArray);
 var
-  Visible:   string;
+  VisStr:    string;
   Col, SpanIdx, SpanEnd, PadCount, I: Integer;
   CurrentFG: TColor;
   CurrentBG: TColor;
   CurrentUL: Boolean;
   Ch:        Char;
 begin
-  Visible := CopyNeutral(ALine, FLeftCol, Width);
+  VisStr := CopyNeutral(ALine, FLeftCol, Width);
 
   GotoLocal(1, ADisplayRow);
   CurrentFG := clDefault;
@@ -487,7 +510,7 @@ begin
   CurrentUL := False;
   Term.ResetColors;
 
-  for Col := 0 to UTF8VisualLen(Visible) - 1 do
+  for Col := 0 to UTF8VisualLen(VisStr) - 1 do
   begin
     { Find which span covers this column (absolute column = FLeftCol + Col) }
     CurrentFG := clDefault;
@@ -508,13 +531,13 @@ begin
     Term.SetFG(CurrentFG);
     Term.SetBG(CurrentBG);
     Term.SetUnderline(CurrentUL);
-    Ch := Visible[Col + 1];
+    Ch := VisStr[Col + 1];
     Term.WriteStr(Ch);
   end;
 
   { Pad to end of line to clear stale content }
   Term.ResetColors;
-  PadCount := Width - UTF8VisualLen(Visible);
+  PadCount := Width - UTF8VisualLen(VisStr);
   for I := 1 to PadCount do
     Term.WriteStr(' ');
 end;
@@ -557,7 +580,7 @@ end;
 
 procedure TTextEditor.DoBoundsChanged;
 begin
-  EnsureVisible;
+  EnsureVisStr;
 end;
 
 function TTextEditor.DoKeyDown(var Key: TKeyEvent): Boolean;

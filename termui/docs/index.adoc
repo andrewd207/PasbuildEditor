@@ -53,7 +53,7 @@ Containers implement <<control.adoc#IContainer,IContainer>> (CORBA, no ref-count
 |===
 | Unit | Description
 
-| <<label.adoc#,TermUI.Control.Label>>
+| <<textlabel.adoc#,TermUI.Control.TextLabel>>
 | `TLabel` — static text with alignment and word wrap
 
 | <<lineeditor.adoc#,TermUI.Control.LineEditor>>

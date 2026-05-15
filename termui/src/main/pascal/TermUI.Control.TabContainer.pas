@@ -56,7 +56,7 @@ type
 
 implementation
 
-uses SysUtils;
+uses SysUtils, Math;
 
 const
   TAB_BAR_HEIGHT = 1;

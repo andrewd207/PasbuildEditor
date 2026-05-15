@@ -22,392 +22,467 @@ procedure RunBuildRunnerPage(Ctx: TUIContext);
 implementation
 
 uses
-  Process,
-  TermUI.Terminal, TermUI.Menu,
+  Math, Process,
+  TermUI.Terminal, TermUI.Menu, TermUI.Forms, TermUI.Application,
   TermUI.StringUtils,
-  PasbuildEditor.UI.Colors, PasbuildEditor.GlobalKeys,
-  TermUI.Application;
+  TermUI.Control.Editor,
+  TermUI.Control.TextLabel,
+  TermUI.Timer,
+  PasbuildEditor.UI.Colors, PasbuildEditor.GlobalKeys;
+
+{ ── Build output highlighter ──────────────────────────────────────── }
+
+type
+  TBuildHighlighter = class(TTextHighlighter)
+  private
+    FIsJson: Boolean;
+    procedure EmitSpan(var ASpans: TTextSpanArray; var ACount: Integer;
+      ACol, ALen: Integer; AFG: TColor);
+    procedure EmitJsonSpans(const ALine: string; var ASpans: TTextSpanArray;
+      var ACount: Integer);
+  public
+    constructor Create(AIsJson: Boolean);
+    procedure GetSpans(ARow: Integer; const ALine: string;
+      out ASpans: TTextSpanArray); override;
+  end;
+
+constructor TBuildHighlighter.Create(AIsJson: Boolean);
+begin
+  inherited Create;
+  FIsJson := AIsJson;
+end;
+
+procedure TBuildHighlighter.EmitSpan(var ASpans: TTextSpanArray;
+  var ACount: Integer; ACol, ALen: Integer; AFG: TColor);
+begin
+  if ALen <= 0 then Exit;
+  if ACount >= Length(ASpans) then
+    SetLength(ASpans, Max(8, Length(ASpans) * 2));
+  ASpans[ACount].Col       := ACol;
+  ASpans[ACount].Len       := ALen;
+  ASpans[ACount].FG        := AFG;
+  ASpans[ACount].BG        := clDefault;
+  ASpans[ACount].Underline := False;
+  Inc(ACount);
+end;
+
+procedure TBuildHighlighter.EmitJsonSpans(const ALine: string;
+  var ASpans: TTextSpanArray; var ACount: Integer);
+var
+  P, Len, Q, SpanStart: Integer;
+  C: Char;
+  InStr, IsKey, Escaped: Boolean;
+  KW: string;
+begin
+  P := 1; Len := Length(ALine);
+  InStr := False; IsKey := False; Escaped := False;
+  while P <= Len do
+  begin
+    C := ALine[P];
+
+    if InStr then
+    begin
+      if Escaped then
+        Escaped := False
+      else if C = '\' then
+        Escaped := True
+      else if C = '"' then
+      begin
+        if IsKey then
+          EmitSpan(ASpans, ACount, SpanStart - 1, P - SpanStart + 1, clBrightCyan)
+        else
+          EmitSpan(ASpans, ACount, SpanStart - 1, P - SpanStart + 1, clBrightGreen);
+        InStr := False; IsKey := False;
+      end;
+      Inc(P); Continue;
+    end;
+
+    case C of
+      '"':
+      begin
+        SpanStart := P;
+        { Peek ahead to determine if this string is a key (followed by ':') }
+        Q := P + 1; IsKey := False;
+        while Q <= Len do
+        begin
+          if ALine[Q] = '\' then begin Inc(Q); Inc(Q); Continue; end;
+          if ALine[Q] = '"' then
+          begin
+            Inc(Q);
+            while (Q <= Len) and (ALine[Q] = ' ') do Inc(Q);
+            IsKey := (Q <= Len) and (ALine[Q] = ':');
+            Break;
+          end;
+          Inc(Q);
+        end;
+        Escaped := False; InStr := True;
+        Inc(P); Continue;
+      end;
+
+      '0'..'9', '-':
+      begin
+        SpanStart := P;
+        while (P <= Len) and (ALine[P] in ['0'..'9', '.', 'e', 'E', '+', '-']) do
+          Inc(P);
+        EmitSpan(ASpans, ACount, SpanStart - 1, P - SpanStart, clBrightYellow);
+        Continue;
+      end;
+
+      't', 'f', 'n':
+      begin
+        Q := P; KW := '';
+        while (Q <= Len) and (ALine[Q] in ['a'..'z']) do
+        begin
+          KW += ALine[Q]; Inc(Q);
+        end;
+        if (KW = 'true') or (KW = 'false') then
+        begin
+          EmitSpan(ASpans, ACount, P - 1, Length(KW), clBrightMagenta);
+          P := Q; Continue;
+        end
+        else if KW = 'null' then
+        begin
+          EmitSpan(ASpans, ACount, P - 1, Length(KW), clBrightBlack);
+          P := Q; Continue;
+        end;
+      end;
+
+      '{', '}', '[', ']', ':', ',':
+        EmitSpan(ASpans, ACount, P - 1, 1, clWhite);
+    end;
+    Inc(P);
+  end;
+end;
+
+procedure TBuildHighlighter.GetSpans(ARow: Integer; const ALine: string;
+  out ASpans: TTextSpanArray);
+var
+  Count, TagEnd: Integer;
+begin
+  ASpans := nil;
+  Count  := 0;
+  if Length(ALine) = 0 then Exit;
+
+  SetLength(ASpans, 8);
+
+  if FIsJson then
+  begin
+    EmitJsonSpans(ALine, ASpans, Count);
+  end
+  else if CopyNeutral(ALine, 0, 7) = '[INFO] ' then
+  begin
+    EmitSpan(ASpans, Count, 0, 6, clBlue);
+  end
+  else if CopyNeutral(ALine, 0, 10) = '[WARNING] ' then
+  begin
+    EmitSpan(ASpans, Count, 0, 9, clYellow);
+  end
+  else if CopyNeutral(ALine, 0, 8) = '[ERROR] ' then
+  begin
+    EmitSpan(ASpans, Count, 0, 7, clRed);
+  end
+  else if (Length(ALine) > 1) and (ALine[1] = '[') then
+  begin
+    if PosNeutral('] ', ALine, TagEnd) and (TagEnd > 0) then
+      EmitSpan(ASpans, Count, 0, TagEnd + 1, clBrightCyan);
+  end;
+
+  SetLength(ASpans, Count);
+end;
+
+{ ── TBuildRunnerForm ───────────────────────────────────────────────── }
+
+type
+  TBuildRunnerForm = class(TForm)
+  private
+    FCtx:        TUIContext;
+    FGoal:       string;
+    FModSuffix:  string;
+    FProc:       TProcess;
+    FTimer:      TTimer;
+    FHeaderLbl:  TLabel;
+    FStatusLbl:  TLabel;
+    FOutput:     TTextEditor;
+    FFooterLbl:  TLabel;
+    FHighlighter: TBuildHighlighter;
+    FPartial:    string;
+    FRunning:    Boolean;
+    FExitCode:   Integer;
+    FStartTime:  TDateTime;
+    FAutoScroll: Boolean;
+
+    function  ElapsedSec: Integer;
+    procedure DrainOutput;
+    procedure UpdateStatus;
+    procedure OnPollTimer(Sender: TObject);
+  protected
+    procedure DoPaint; override;
+    function  DoKeyDown(var Key: TKeyEvent): Boolean; override;
+    procedure ArrangeChildren; override;
+  public
+    constructor Create(ACtx: TUIContext; const AGoal: string;
+      AIsJson: Boolean; const AModSuffix: string);
+    destructor Destroy; override;
+  end;
+
+constructor TBuildRunnerForm.Create(ACtx: TUIContext; const AGoal: string;
+  AIsJson: Boolean; const AModSuffix: string);
+begin
+  inherited Create;
+  FCtx       := ACtx;
+  FGoal      := AGoal;
+  FModSuffix := AModSuffix;
+  FAutoScroll := True;
+
+  FHighlighter := TBuildHighlighter.Create(AIsJson);
+
+  FHeaderLbl := TLabel.Create;
+  FHeaderLbl.ForeColor := clBrightYellow;
+  FHeaderLbl.Text := ' ' + FCtx.Breadcrumb + ' > Run build > ' + FGoal;
+  AddChild(FHeaderLbl);
+
+  FStatusLbl := TLabel.Create;
+  AddChild(FStatusLbl);
+
+  FOutput := TTextEditor.Create;
+  FOutput.ReadOnly    := True;
+  FOutput.Highlighter := FHighlighter;
+  AddChild(FOutput);
+
+  FFooterLbl := TLabel.Create;
+  FFooterLbl.ForeColor := clBrightBlack;
+  AddChild(FFooterLbl);
+
+  ArrangeChildren;
+
+  { Start the process }
+  FProc := TProcess.Create(nil);
+  FProc.Executable := 'pasbuild';
+  FProc.Parameters.Add(FGoal);
+  if Assigned(FCtx.ParentPOM) then
+  begin
+    FProc.CurrentDirectory :=
+      ExtractFilePath(ExpandFileName(FCtx.ParentPOM.FileName));
+    FProc.Parameters.Add('-m');
+    FProc.Parameters.Add(FCtx.Project.Name);
+  end
+  else
+    FProc.CurrentDirectory :=
+      ExtractFilePath(ExpandFileName(FCtx.Project.FileName));
+  FProc.Options := [poUsePipes, poStderrToOutput];
+
+  FRunning   := True;
+  FStartTime := Now;
+  FExitCode  := 0;
+  UpdateStatus;
+  FProc.Execute;
+
+  FTimer          := TTimer.Create;
+  FTimer.Interval := 50;
+  FTimer.OnTimer  := @OnPollTimer;
+  FTimer.Enabled  := True;
+end;
+
+destructor TBuildRunnerForm.Destroy;
+begin
+  FTimer.Free;
+  if Assigned(FProc) and FProc.Running then
+    FProc.Terminate(1);
+  FProc.Free;
+  FHighlighter.Free;
+  inherited;
+end;
+
+procedure TBuildRunnerForm.ArrangeChildren;
+begin
+  if FOutput = nil then Exit;
+  FHeaderLbl.SetBounds(1, 1, Width, 1);
+  FStatusLbl.SetBounds(1, 2, Width, 1);
+  { Row 3 = separator drawn in DoPaint }
+  FOutput.SetBounds(1, 4, Width, Max(1, Height - 4));
+  FFooterLbl.SetBounds(1, Height, Width, 1);
+end;
+
+function TBuildRunnerForm.ElapsedSec: Integer;
+begin
+  Result := Trunc((Now - FStartTime) * 86400);
+end;
+
+procedure TBuildRunnerForm.DrainOutput;
+var
+  Buf:  array[0..511] of Byte;
+  N, J: Integer;
+  S, C: string;
+begin
+  if not Assigned(FProc) then Exit;
+  N := FProc.Output.NumBytesAvailable;
+  while N > 0 do
+  begin
+    if N > SizeOf(Buf) then N := SizeOf(Buf);
+    N := FProc.Output.Read(Buf[0], N);
+    S := '';
+    for J := 0 to N - 1 do S += Chr(Buf[J]);
+    for J := 1 to Length(S) do
+    begin
+      C := S[J];
+      if C = #13 then Continue;
+      if C = #10 then
+      begin
+        FOutput.Lines.Add(FPartial);
+        FPartial := '';
+      end
+      else
+        FPartial += C;
+    end;
+    N := FProc.Output.NumBytesAvailable;
+  end;
+end;
+
+procedure TBuildRunnerForm.UpdateStatus;
+var S: string;
+begin
+  if FRunning then
+  begin
+    FStatusLbl.ForeColor := clBrightYellow;
+    S := ' Running: pasbuild ' + FGoal + FModSuffix +
+         '  (' + IntToStr(ElapsedSec) + 's)';
+    FFooterLbl.Text := ' [↑↓/PgUp/PgDn] scroll   [Ctrl+C] cancel';
+  end
+  else if FExitCode = 0 then
+  begin
+    FStatusLbl.ForeColor := clBrightGreen;
+    S := ' Done — pasbuild ' + FGoal + FModSuffix +
+         '  exit 0  (' + IntToStr(ElapsedSec) + 's)';
+    FFooterLbl.Text := ' [↑↓/PgUp/PgDn] scroll   [Enter/Esc] back';
+  end
+  else
+  begin
+    FStatusLbl.ForeColor := clBrightRed;
+    S := ' Done — pasbuild ' + FGoal + FModSuffix +
+         '  exit ' + IntToStr(FExitCode) +
+         '  (' + IntToStr(ElapsedSec) + 's)';
+    FFooterLbl.Text := ' [↑↓/PgUp/PgDn] scroll   [Enter/Esc] back';
+  end;
+  FStatusLbl.Text := S;
+end;
+
+procedure TBuildRunnerForm.OnPollTimer(Sender: TObject);
+begin
+  DrainOutput;
+  if FRunning and not FProc.Running then
+  begin
+    { Process finished — drain any final output }
+    DrainOutput;
+    if FPartial <> '' then
+    begin
+      FOutput.Lines.Add(FPartial);
+      FPartial := '';
+    end;
+    FExitCode  := FProc.ExitCode;
+    FRunning   := False;
+    FTimer.Enabled := False;
+    FAutoScroll    := True;  { scroll to see the final output }
+  end;
+  if FAutoScroll then
+    FOutput.ScrollToBottom;
+  UpdateStatus;
+  Invalidate;
+end;
+
+procedure TBuildRunnerForm.DoPaint;
+begin
+  { Draw the separator between status and output }
+  GotoLocal(1, 3);
+  Term.SetFG(clBrightBlack);
+  Term.WriteStr(StringOfChar('-', Width));
+  Term.ResetColors;
+  inherited DoPaint;
+end;
+
+function TBuildRunnerForm.DoKeyDown(var Key: TKeyEvent): Boolean;
+begin
+  case Key.Code of
+    kcUp, kcDown, kcPageUp, kcPageDown:
+    begin
+      FAutoScroll := False;
+      Result := FOutput.KeyDown(Key);
+    end;
+    kcEnter, kcEscape:
+      if not FRunning then
+      begin
+        Close(1);
+        Exit(True);
+      end
+      else
+        Result := inherited DoKeyDown(Key);
+    kcCtrlC:
+    begin
+      if FRunning and Assigned(FProc) then
+        FProc.Terminate(1);
+      FAutoScroll := False;
+      Result := True;
+    end;
+  else
+    Result := inherited DoKeyDown(Key);
+  end;
+  if Result then Invalidate;
+end;
+
+{ ── Goal selection + page entry ───────────────────────────────────── }
+
+procedure AddPluginsFromDir(AGoalMenu: TMenu; const ADir: string;
+  ASeen: TStringList);
+const
+  Digits: array[0..9] of Char = ('1','2','3','4','5','6','7','8','9','0');
+var
+  SR:        TSearchRec;
+  PlugName:  string;
+  PlugGoal:  string;
+  ItemLabel: string;
+  D:         Char;
+  Idx:       Integer;
+begin
+  if not DirectoryExists(ADir) then Exit;
+  if FindFirst(IncludeTrailingPathDelimiter(ADir) + 'pasbuild-*',
+               faAnyFile and not faDirectory, SR) = 0 then
+  try
+    repeat
+      if (SR.Attr and faDirectory) <> 0 then Continue;
+      PlugName := SR.Name;
+      PlugGoal := CopyNeutral(PlugName, Length('pasbuild-'), MaxInt);
+      if (PlugGoal = '') or (ASeen.IndexOf(PlugGoal) >= 0) then Continue;
+      Idx := ASeen.Count;
+      ASeen.Add(PlugGoal);
+      if Idx <= 9 then
+      begin
+        D         := Digits[Idx];
+        ItemLabel := PadRight(PlugGoal, 18) + ' ' + D;
+      end
+      else
+      begin
+        D         := #0;
+        ItemLabel := PlugGoal;
+      end;
+      AGoalMenu.Add(TMenuItem.Create(ItemLabel, nil, PlugGoal, D));
+    until FindNext(SR) <> 0;
+  finally
+    FindClose(SR);
+  end;
+end;
 
 procedure RunBuildRunnerPage(Ctx: TUIContext);
-const
-  HEADER_ROWS = 3;
-  FOOTER_ROWS = 2;
 var
   GoalMenu:    TMenu;
   GoalSel:     TMenuItem;
   It:          TMenuItem;
   GoalSelRow:  Integer;
   Goal:        string;
-  Proc:        TProcess;
-  Lines:       TStringList;
-  Partial:     string;
-  Buf:         array[0..511] of Byte;
-  N, I:        Integer;
-  ScrollOff:   Integer;
-  AutoScroll:  Boolean;
-  VisibleRows: Integer;
-  Dirty:       Boolean;
-  Running:     Boolean;
-  ExitCode:    Integer;
-  StartTime:   TDateTime;
-  K:           TKeyEvent;
-  S:           string;
   IsJsonMode:  Boolean;
   ModuleSuffix: string;
-
-  function ElapsedSec: Integer;
-  begin
-    Result := Trunc((Now - StartTime) * 86400);
-  end;
-
-  function DisplayLineCount: Integer;
-  begin
-    Result := Lines.Count;
-    if Partial <> '' then Inc(Result);
-  end;
-
-  function GetDisplayLine(AIdx: Integer): string;
-  begin
-    if AIdx < Lines.Count then Result := Lines[AIdx]
-    else Result := Partial;
-  end;
-
-  procedure ComputeVisible;
-  begin
-    VisibleRows := Term.Height - HEADER_ROWS - FOOTER_ROWS;
-    if VisibleRows < 1 then VisibleRows := 1;
-  end;
-
-  procedure PinToBottom;
-  begin
-    ComputeVisible;
-    ScrollOff := DisplayLineCount - VisibleRows;
-    if ScrollOff < 0 then ScrollOff := 0;
-  end;
-
-  procedure WriteJsonLine(const ALine: string);
-  var
-    P, Len, Q: Integer;
-    C:         Char;
-    InStr:     Boolean;
-    IsKey:     Boolean;
-    Escaped:   Boolean;
-    Chunk:     string;
-    KW:        string;
-
-    procedure FlushChunk;
-    begin
-      if Chunk = '' then Exit;
-      Term.ResetColors;
-      Term.WriteStr(Chunk);
-      Chunk := '';
-    end;
-
-  begin
-    P      := 1;
-    Len    := Length(ALine);
-    InStr  := False;
-    IsKey  := False;
-    Chunk  := '';
-
-    while P <= Len do
-    begin
-      C := ALine[P];
-
-      if InStr then
-      begin
-        Chunk := Chunk + C;
-        if C = '\' then
-        begin
-          if P < Len then
-          begin
-            Inc(P);
-            Chunk := Chunk + ALine[P];
-          end;
-        end
-        else if C = '"' then
-        begin
-          InStr := False;
-          if IsKey then
-            Term.SetFG(clBrightCyan)
-          else
-            Term.SetFG(clBrightGreen);
-          Term.WriteStr(Chunk);
-          Term.ResetColors;
-          Chunk := '';
-          IsKey := False;
-        end;
-        Inc(P);
-        Continue;
-      end;
-
-      case C of
-        '"':
-        begin
-          Q       := P + 1;
-          Escaped := False;
-          IsKey   := False;
-          while Q <= Len do
-          begin
-            if Escaped then
-              Escaped := False
-            else if ALine[Q] = '\' then
-              Escaped := True
-            else if ALine[Q] = '"' then
-            begin
-              Inc(Q);
-              while (Q <= Len) and (ALine[Q] = ' ') do Inc(Q);
-              IsKey := (Q <= Len) and (ALine[Q] = ':');
-              Break;
-            end;
-            Inc(Q);
-          end;
-          FlushChunk;
-          InStr := True;
-          Chunk := '"';
-        end;
-        '0'..'9', '-':
-        begin
-          FlushChunk;
-          KW := '';
-          while (P <= Len) and (ALine[P] in ['0'..'9', '-', '.', 'e', 'E', '+']) do
-          begin
-            KW := KW + ALine[P];
-            Inc(P);
-          end;
-          Term.SetFG(clBrightYellow);
-          Term.WriteStr(KW);
-          Term.ResetColors;
-          Continue;
-        end;
-        't', 'f', 'n':
-        begin
-          KW := '';
-          Q  := P;
-          while (Q <= Len) and (ALine[Q] in ['a'..'z']) do
-          begin
-            KW := KW + ALine[Q];
-            Inc(Q);
-          end;
-          if (KW = 'true') or (KW = 'false') or (KW = 'null') then
-          begin
-            FlushChunk;
-            if KW = 'null' then Term.SetFG(clBrightBlack)
-            else                 Term.SetFG(clBrightMagenta);
-            Term.WriteStr(KW);
-            Term.ResetColors;
-            P := Q;
-            Continue;
-          end
-          else
-            Chunk := Chunk + C;
-        end;
-        '{', '}', '[', ']', ':', ',':
-        begin
-          FlushChunk;
-          Term.SetFG(clWhite);
-          Term.WriteStr(C);
-          Term.ResetColors;
-        end;
-      else
-        Chunk := Chunk + C;
-      end;
-      Inc(P);
-    end;
-    FlushChunk;
-  end;
-
-  procedure Draw;
-  var
-    Row, LineIdx, J, TagEnd: Integer;
-    StatusStr:               string;
-  begin
-    ComputeVisible;
-    Term.ClearScreen;
-
-    ColorHeader;
-    Term.GotoXY(1, 1);
-    Term.WriteStr(' ' + Ctx.Breadcrumb + ' > Run build > Run output');
-    Term.ClearToEOL;
-    Term.ResetColors;
-
-    Term.GotoXY(1, 2);
-    if Running then
-    begin
-      Term.SetFG(clBrightYellow);
-      StatusStr := ' Running: pasbuild ' + Goal + ModuleSuffix +
-                   '  (' + IntToStr(ElapsedSec) + 's)';
-    end
-    else if ExitCode = 0 then
-    begin
-      Term.SetFG(clBrightGreen);
-      StatusStr := ' Done — pasbuild ' + Goal + ModuleSuffix +
-                   '  exit 0  (' + IntToStr(ElapsedSec) + 's)';
-    end
-    else
-    begin
-      Term.SetFG(clBrightRed);
-      StatusStr := ' Done — pasbuild ' + Goal + ModuleSuffix +
-                   '  exit ' + IntToStr(ExitCode) +
-                   '  (' + IntToStr(ElapsedSec) + 's)';
-    end;
-    Term.WriteStr(StatusStr);
-    Term.ClearToEOL;
-    Term.ResetColors;
-
-    Term.GotoXY(1, 3);
-    ColorRule;
-    Term.WriteStr(StringOfChar('-', Term.Width));
-    Term.ResetColors;
-
-    for J := 0 to VisibleRows - 1 do
-    begin
-      LineIdx := ScrollOff + J;
-      Row     := HEADER_ROWS + 1 + J;
-      Term.GotoXY(1, Row);
-      Term.ResetColors;
-      if LineIdx < DisplayLineCount then
-      begin
-        S := GetDisplayLine(LineIdx);
-        if Length(S) > Term.Width then S := CopyNeutral(S, 0, Term.Width);
-        if IsJsonMode then
-          WriteJsonLine(S)
-        else if CopyNeutral(S, 0, 7) = '[INFO] ' then
-        begin
-          Term.SetFG(clBlue);   Term.WriteStr('[INFO]');
-          Term.ResetColors;     Term.WriteStr(CopyNeutral(S, 6, MaxInt));
-        end
-        else if CopyNeutral(S, 0, 10) = '[WARNING] ' then
-        begin
-          Term.SetFG(clYellow); Term.WriteStr('[WARNING]');
-          Term.ResetColors;     Term.WriteStr(CopyNeutral(S, 9, MaxInt));
-        end
-        else if CopyNeutral(S, 0, 8) = '[ERROR] ' then
-        begin
-          Term.SetFG(clRed);    Term.WriteStr('[ERROR]');
-          Term.ResetColors;     Term.WriteStr(CopyNeutral(S, 7, MaxInt));
-        end
-        else if (Length(S) > 1) and (S.Index[0] = '[') then
-        begin
-          if PosNeutral('] ', S, TagEnd) and (TagEnd > 0) then
-          begin
-            Term.SetFG(clBrightCyan); Term.WriteStr(CopyNeutral(S, 0, TagEnd + 1));
-            Term.ResetColors;         Term.WriteStr(CopyNeutral(S, TagEnd + 1, MaxInt));
-          end
-          else
-            Term.WriteStr(S);
-        end
-        else
-          Term.WriteStr(S);
-      end;
-      Term.ClearToEOL;
-    end;
-
-    Term.GotoXY(1, Term.Height - 1);
-    ColorHelp;
-    if Running then
-      Term.WriteStr(' [Up/Down/PgUp/PgDn] scroll   [Ctrl+C] cancel')
-    else
-      Term.WriteStr(' [Up/Down/PgUp/PgDn] scroll   [Enter/Esc] back');
-    Term.ClearToEOL;
-    Term.ResetColors;
-
-    Term.FlushOutput;
-    Dirty := False;
-  end;
-
-  procedure AppendOutput(const AData: string);
-  var
-    C:  Char;
-    J:  Integer;
-  begin
-    for J := 0 to Length(AData) - 1 do
-    begin
-      C := AData.Index[J];
-      if C = #13 then Continue;
-      if C = #10 then
-      begin
-        Lines.Add(Partial);
-        Partial := '';
-      end
-      else
-        Partial += C;
-    end;
-  end;
-
-  procedure HandleScroll(ADelta: Integer);
-  var
-    MaxOff: Integer;
-  begin
-    AutoScroll := False;
-    ComputeVisible;
-    MaxOff := DisplayLineCount - VisibleRows;
-    if MaxOff < 0 then MaxOff := 0;
-    Inc(ScrollOff, ADelta);
-    if ScrollOff > MaxOff then ScrollOff := MaxOff;
-    if ScrollOff < 0 then ScrollOff := 0;
-    Dirty := True;
-  end;
-
-  procedure DrainOutput;
-  var J: Integer;
-  begin
-    N := Proc.Output.NumBytesAvailable;
-    while N > 0 do
-    begin
-      if N > SizeOf(Buf) then N := SizeOf(Buf);
-      N := Proc.Output.Read(Buf[0], N);
-      S := '';
-      for J := 0 to N - 1 do S += Chr(Buf[J]);
-      AppendOutput(S);
-      Dirty := True;
-      N := Proc.Output.NumBytesAvailable;
-    end;
-  end;
-
-  procedure AddPluginsFromDir(const ADir: string; ASeen: TStringList);
-  const
-    Digits: array[0..9] of Char = ('1','2','3','4','5','6','7','8','9','0');
-  var
-    SR:        TSearchRec;
-    PlugName:  string;
-    PlugGoal:  string;
-    ItemLabel: string;
-    D:         Char;
-    Idx:       Integer;
-  begin
-    if not DirectoryExists(ADir) then Exit;
-    if FindFirst(IncludeTrailingPathDelimiter(ADir) + 'pasbuild-*',
-                 faAnyFile and not faDirectory, SR) = 0 then
-    try
-      repeat
-        if (SR.Attr and faDirectory) <> 0 then Continue;
-        PlugName := SR.Name;
-        PlugGoal := CopyNeutral(PlugName, Length('pasbuild-'), MaxInt);
-        if (PlugGoal = '') or (ASeen.IndexOf(PlugGoal) >= 0) then Continue;
-        Idx := ASeen.Count;
-        ASeen.Add(PlugGoal);
-        if Idx <= 9 then
-        begin
-          D         := Digits[Idx];
-          ItemLabel := PadRight(PlugGoal, 18) + ' ' + D;
-        end
-        else
-        begin
-          D         := #0;
-          ItemLabel := PlugGoal;
-        end;
-        GoalMenu.Add(TMenuItem.Create(ItemLabel, nil, PlugGoal, D));
-      until FindNext(SR) <> 0;
-    finally
-      FindClose(SR);
-    end;
-  end;
-
-var
-  ProjectDir:    string;
-  PluginsSeen:   TStringList;
+  ProjectDir:  string;
+  PluginsSeen: TStringList;
   LastGoalLabel: string;
+  RunForm:     TBuildRunnerForm;
 begin
   LastGoalLabel := '';
   repeat
@@ -431,8 +506,11 @@ begin
         PluginsSeen := TStringList.Create;
         try
           GoalMenu.AddHeader('Plugins');
-          AddPluginsFromDir(IncludeTrailingPathDelimiter(ProjectDir) + 'plugins', PluginsSeen);
-          AddPluginsFromDir(IncludeTrailingPathDelimiter(GetUserDir) + '.pasbuild/plugins', PluginsSeen);
+          AddPluginsFromDir(GoalMenu,
+            IncludeTrailingPathDelimiter(ProjectDir) + 'plugins', PluginsSeen);
+          AddPluginsFromDir(GoalMenu,
+            IncludeTrailingPathDelimiter(GetUserDir) + '.pasbuild/plugins',
+            PluginsSeen);
         finally
           PluginsSeen.Free;
         end;
@@ -466,87 +544,20 @@ begin
     until False;
     if Goal = '' then Exit;
 
-    Lines := TStringList.Create;
-    Proc  := TProcess.Create(nil);
+    IsJsonMode   := (Goal = 'resolve');
+    ModuleSuffix := '';
+    if Assigned(Ctx.ParentPOM) then
+      ModuleSuffix := ' -m ' + Ctx.Project.Name;
+
+    RunForm := TBuildRunnerForm.Create(Ctx, Goal, IsJsonMode, ModuleSuffix);
     try
-      Proc.Executable := 'pasbuild';
-      Proc.Parameters.Add(Goal);
-      if Assigned(Ctx.ParentPOM) then
-      begin
-        Proc.CurrentDirectory := ExtractFilePath(ExpandFileName(Ctx.ParentPOM.FileName));
-        Proc.Parameters.Add('-m');
-        Proc.Parameters.Add(Ctx.Project.Name);
-      end
-      else
-        Proc.CurrentDirectory := ExtractFilePath(ExpandFileName(Ctx.Project.FileName));
-      Proc.Options := [poUsePipes, poStderrToOutput];
-
-      StartTime  := Now;
-      ScrollOff  := 0;
-      AutoScroll := True;
-      Partial    := '';
-      ExitCode   := 0;
-      Running    := True;
-      Dirty      := True;
-      IsJsonMode := (Goal = 'resolve');
-      if Assigned(Ctx.ParentPOM) then
-        ModuleSuffix := ' -m ' + Ctx.Project.Name
-      else
-        ModuleSuffix := '';
-
-      Proc.Execute;
-
-      repeat
-        DrainOutput;
-        if AutoScroll and Dirty then PinToBottom;
-        if not Proc.Running then
-        begin
-          DrainOutput;
-          if Partial <> '' then begin Lines.Add(Partial); Partial := ''; end;
-          ExitCode   := Proc.ExitCode;
-          Running    := False;
-          PinToBottom;
-          Dirty := True;
-          Draw;
-          Break;
-        end;
-        if Term.ReadKeyTimeout(K, 50) then
-          case K.Code of
-            kcUp:       HandleScroll(-1);
-            kcDown:     HandleScroll(1);
-            kcPageUp:   HandleScroll(-VisibleRows);
-            kcPageDown: HandleScroll(VisibleRows);
-            kcCtrlC:
-              if Running then
-              begin
-                Proc.Terminate(1);
-                AutoScroll := False;
-                Dirty := True;
-              end;
-          end;
-        if Dirty then Draw;
-      until False;
-
-      repeat
-        if Term.ReadKeyTimeout(K, 200) then
-        begin
-          case K.Code of
-            kcUp:        HandleScroll(-1);
-            kcDown:      HandleScroll(1);
-            kcPageUp:    HandleScroll(-VisibleRows);
-            kcPageDown:  HandleScroll(VisibleRows);
-            kcEnter, kcEscape: Break;
-          end;
-          if Dirty then Draw;
-        end;
-      until False;
-
+      Application.ShowModal(RunForm);
     finally
-      if Proc.Running then Proc.Terminate(1);
-      Proc.Free;
-      Lines.Free;
+      RunForm.Free;
     end;
-  until False;
+    GCtrlCRequested := False;
+    GCtrlXRequested := False;
+  until Application.Terminated;
 end;
 
 end.
