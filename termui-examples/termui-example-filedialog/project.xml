@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+  <name>termui-example-filedialog</name>
+  <!-- version inherited from aggregator -->
+  <author>Andrew Haines</author>
+  <license>BSD-3-Clause</license>
+  <build>
+    <mainSource>Main.pas</mainSource>
+    <executableName>termui-example-filedialog</executableName>
+    <packaging>application</packaging>
+  </build>
+  <test>
+    <testSource>TestRunner.pas</testSource>
+    <frameworkOptions>
+      <option>--all --format=plain</option>
+    </frameworkOptions>
+  </test>
+  <dependencies>
+    <dependency>
+      <name>pasbuildeditor-termui</name>
+      <version>1.0.0</version>
+    </dependency>
+  </dependencies>
+</project>

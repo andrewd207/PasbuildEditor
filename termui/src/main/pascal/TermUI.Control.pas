@@ -18,6 +18,8 @@ uses
   Classes, TermUI.Terminal;
 
 type
+  TTextAlign = (taLeft, taCenter, taRight);
+
   TControl = class;
 
   { Fired when a key is pressed. Return True to mark the key as handled. }
@@ -51,6 +53,8 @@ type
     FVisible:          Boolean;
     FEnabled:          Boolean;
     FInvalidated:      Boolean;
+    FForeColor:        TColor;
+    FBackColor:        TColor;
     FOnKeyDown:        TKeyDownEvent;
     FOnPaint:          TNotifyEvent;
     FOnBoundsChanged:  TNotifyEvent;
@@ -60,6 +64,10 @@ type
     procedure DoPaint; virtual;
     { Override to handle keys before OnKeyDown fires. Return True to consume the key. }
     function  DoKeyDown(var Key: TKeyEvent): Boolean; virtual;
+    { Called when the control receives input focus. }
+    procedure DoGainFocus; virtual;
+    { Called when the control loses input focus. }
+    procedure DoLoseFocus; virtual;
     { Called from SetBounds after new bounds are stored. Override in containers to
       rearrange children, or in leaf controls to recompute display state (e.g. truncate
       labels, recalculate scroll limits). Fires before OnBoundsChanged and Invalidate. }
@@ -83,6 +91,9 @@ type
     function  KeyDown(var Key: TKeyEvent): Boolean;
     { Request help for this control. Calls DoHelp then OnHelp. Returns True if handled. }
     function  Help: Boolean;
+    { Notify the control that it has gained or lost input focus. }
+    procedure GainFocus;
+    procedure LoseFocus;
 
     property Left:        Integer       read FLeft        write FLeft;
     property Top:         Integer       read FTop         write FTop;
@@ -91,6 +102,8 @@ type
     property Visible:     Boolean       read FVisible     write FVisible;
     property Enabled:     Boolean       read FEnabled     write FEnabled;
     property Invalidated: Boolean       read FInvalidated;
+    property ForeColor: TColor read FForeColor write FForeColor;
+    property BackColor: TColor read FBackColor write FBackColor;
     property OnKeyDown:       TKeyDownEvent read FOnKeyDown        write FOnKeyDown;
     property OnPaint:         TNotifyEvent  read FOnPaint           write FOnPaint;
     property OnBoundsChanged: TNotifyEvent  read FOnBoundsChanged   write FOnBoundsChanged;
@@ -102,9 +115,11 @@ implementation
 constructor TControl.Create;
 begin
   inherited Create;
-  FVisible     := True;
-  FEnabled     := True;
+  FVisible    := True;
+  FEnabled    := True;
   FInvalidated := True;
+  FForeColor  := clDefault;
+  FBackColor  := clDefault;
 end;
 
 procedure TControl.SetBounds(ALeft, ATop, AWidth, AHeight: Integer);
@@ -173,6 +188,24 @@ begin
   if Result then Exit;
   if Assigned(FOnHelp) then
     Result := FOnHelp(Self);
+end;
+
+procedure TControl.DoGainFocus;
+begin
+end;
+
+procedure TControl.DoLoseFocus;
+begin
+end;
+
+procedure TControl.GainFocus;
+begin
+  DoGainFocus;
+end;
+
+procedure TControl.LoseFocus;
+begin
+  DoLoseFocus;
 end;
 
 end.

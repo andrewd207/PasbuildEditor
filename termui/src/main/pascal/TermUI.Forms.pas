@@ -211,6 +211,12 @@ begin
     Result := True;
     Exit;
   end;
+  if Key.Code = kcShiftTab then
+  begin
+    FocusPrev;
+    Result := True;
+    Exit;
+  end;
   Result := inherited DoKeyDown(Key);
 end;
 

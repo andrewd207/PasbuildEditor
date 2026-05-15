@@ -252,7 +252,9 @@ begin
       VK_INSERT:  Result.Code := kcInsert;
       VK_PRIOR:   Result.Code := kcPageUp;
       VK_NEXT:    Result.Code := kcPageDown;
-      VK_TAB:     if Shift then Result.Code := kcShiftTab else Result.Code := kcTab;
+      VK_TAB:     if Ctrl  then Result.Code := kcCtrlTab
+                else if Shift then Result.Code := kcShiftTab
+                else               Result.Code := kcTab;
       VK_F1:  Result.Code := kcF1;
       VK_F2:  Result.Code := kcF2;
       VK_F3:  Result.Code := kcF3;

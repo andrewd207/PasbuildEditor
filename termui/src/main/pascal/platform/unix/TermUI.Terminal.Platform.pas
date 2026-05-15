@@ -18,7 +18,7 @@ uses TermUI.Terminal;
 implementation
 
 uses
-  BaseUnix, termio, SysUtils;
+  BaseUnix, termio, SysUtils, StrUtils;
 
 {$IF DEFINED(LINUX)}
 const TIOCGWINSZ_VAL = $5413;
@@ -191,7 +191,7 @@ var
   B, B2: Byte;
   Params: string;
   Final:  Byte;
-  P1, P2: Integer;
+  P1, P2, P3: Integer;
 
   { Read CSI parameter bytes (digits, semicolons, and other non-final bytes)
     until a final byte: @, A–Z, a–z, or ~.  Returns the final in AFinal. }
@@ -213,8 +213,8 @@ var
     end;
   end;
 
-  { Parse 'N' or 'N;M' into AP1/AP2; missing parts default to 0. }
-  procedure ParseParams(const S: string; out AP1, AP2: Integer);
+  { Parse 'N', 'N;M', or 'N;M;K' into AP1/AP2/AP3; missing parts default to 0. }
+  procedure ParseParams(const S: string; out AP1, AP2: Integer); overload;
   var Sep: Integer;
   begin
     AP1 := 0; AP2 := 0;
@@ -228,6 +228,19 @@ var
       AP1 := StrToIntDef(Copy(S, 1, Sep - 1), 0);
       AP2 := StrToIntDef(Copy(S, Sep + 1, MaxInt), 0);
     end;
+  end;
+
+  procedure ParseParams(const S: string; out AP1, AP2, AP3: Integer); overload;
+  var Sep1, Sep2: Integer;
+  begin
+    AP1 := 0; AP2 := 0; AP3 := 0;
+    Sep1 := Pos(';', S);
+    if Sep1 = 0 then begin AP1 := StrToIntDef(S, 0); Exit; end;
+    AP1  := StrToIntDef(Copy(S, 1, Sep1 - 1), 0);
+    Sep2 := PosEx(';', S, Sep1 + 1);
+    if Sep2 = 0 then begin AP2 := StrToIntDef(Copy(S, Sep1 + 1, MaxInt), 0); Exit; end;
+    AP2 := StrToIntDef(Copy(S, Sep1 + 1, Sep2 - Sep1 - 1), 0);
+    AP3 := StrToIntDef(Copy(S, Sep2 + 1, MaxInt), 0);
   end;
 
   { Map a base directional key code with an xterm modifier number (P2).
@@ -315,6 +328,15 @@ begin
           Params := ReadCSIParams(Final);
           if Final = 0 then Exit;
           ParseParams(Params, P1, P2);
+          { modifyOtherKeys: ESC[27;<mod>;<key>~ — re-parse all three fields }
+          if (Chr(Final) = '~') and (P1 = 27) then
+          begin
+            ParseParams(Params, P1, P2, P3);
+            { P2=modifier (5=Ctrl, 2=Shift), P3=ASCII key code }
+            if (P2 = 5) and (P3 = 9) then Result.Code := kcCtrlTab
+            else if (P2 = 2) and (P3 = 9) then Result.Code := kcShiftTab;
+            Exit;
+          end;
 
           { Linux console F1–F5: ESC [ [ A–E (Params accumulates '[') }
           if (Params = '[') and (Final >= Ord('A')) and (Final <= Ord('E')) then

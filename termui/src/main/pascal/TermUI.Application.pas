@@ -32,15 +32,21 @@ type
       // HandleGlobalKey receives keys not consumed by the active form or its children. }
   TApplication = class
   private
-    FTerminated:  Boolean;
-    FFormStack:   array of TForm;
-    FOnKeyDown:   TKeyDownEvent;
-    FOnIdle:      TNotifyEvent;
-    FHelpKey:     TKeyCode;
+    FTerminated:       Boolean;
+    FFormStack:        array of TForm;
+    FOnKeyDown:        TKeyDownEvent;
+    FOnIdle:           TNotifyEvent;
+    FHelpKey:          TKeyCode;
+    FUseUnicodeBorders: Boolean;
+    FDrawingChars:       array[TDrawingChar] of string;
     function  GetActiveForm: TForm;
     procedure DispatchKey(var Key: TKeyEvent);
     procedure RepaintActive;
     procedure HandleResize;
+    procedure InitDrawingChars;
+    function  GetDrawingChar(ABc: TDrawingChar): string;
+    procedure SetDrawingChar(ABc: TDrawingChar; const AValue: string);
+    procedure SetUseUnicodeBorders(AValue: Boolean);
   public
     destructor Destroy; override;
 
@@ -80,6 +86,25 @@ type
     { Key that triggers the help propagation chain. Defaults to kcF1.
       Set to kcNone to disable the built-in help key entirely. }
     property HelpKey:    TKeyCode      read FHelpKey    write FHelpKey;
+
+    { When True (default), border and widget glyphs use Unicode box-drawing
+      characters.  When False, safe ASCII fallbacks are used.  Changing this
+      property resets all chars to the new defaults; per-char overrides are lost. }
+    property UseUnicodeBorders: Boolean
+      read FUseUnicodeBorders write SetUseUnicodeBorders;
+
+    { Read or override a single drawing character.  The array is indexed by
+      TDrawingChar.  Writing replaces the default for that slot only.
+        Application.DrawingChar[dcTopLeft] := '╔'; }
+    property DrawingChar[ABc: TDrawingChar]: string
+      read GetDrawingChar write SetDrawingChar;
+
+    { Write the glyph for ABc to the terminal at the current cursor position. }
+    procedure DrawChar(ABc: TDrawingChar);
+
+    { Return a string of ACount repetitions of the glyph for ABc.
+      Useful for drawing horizontal or vertical lines in one WriteStr call. }
+    function  RepeatChar(ABc: TDrawingChar; ACount: Integer): string;
   end;
 
 var
@@ -277,9 +302,101 @@ begin
   FTerminated := False;
 end;
 
+procedure TApplication.InitDrawingChars;
+begin
+  if FUseUnicodeBorders then
+  begin
+    FDrawingChars[dcTopLeft]     := '┌';  FDrawingChars[dcTopRight]    := '┐';
+    FDrawingChars[dcBottomLeft]  := '└';  FDrawingChars[dcBottomRight] := '┘';
+    FDrawingChars[dcHoriz]       := '─';  FDrawingChars[dcVert]        := '│';
+    FDrawingChars[dcTeeLeft]     := '├';  FDrawingChars[dcTeeRight]    := '┤';
+    FDrawingChars[dcTeeTop]      := '┬';  FDrawingChars[dcTeeBottom]   := '┴';
+    FDrawingChars[dcCross]       := '┼';
+    FDrawingChars[dcScrollUp]    := '▲';  FDrawingChars[dcScrollDown]  := '▼';
+    FDrawingChars[dcScrollThumb] := '█';  FDrawingChars[dcScrollTrack] := '│';
+    FDrawingChars[dcComboLeft]      := '[';   FDrawingChars[dcComboRight]    := ']';
+    FDrawingChars[dcComboArrow]     := '▼';
+    FDrawingChars[dcDirIndicator]   := '❯';
+    FDrawingChars[dcDirParent]      := '↑';
+    FDrawingChars[dcArrowLeft]      := '←';   FDrawingChars[dcArrowRight]    := '→';
+    FDrawingChars[dcArrowUp]        := '↑';   FDrawingChars[dcArrowDown]     := '↓';
+    FDrawingChars[dcTreeCollapsed]  := '▶';   FDrawingChars[dcTreeExpanded]  := '▼';
+    FDrawingChars[dcTreeLeaf]       := ' ';
+    FDrawingChars[dcTreeVert]       := '│';   FDrawingChars[dcTreeBranch]    := '├';
+    FDrawingChars[dcTreeLast]       := '└';
+    FDrawingChars[dcBullet]         := '•';
+    FDrawingChars[dcSelectedMark]   := '►';
+    FDrawingChars[dcCheckOff]       := '☐';   FDrawingChars[dcCheckOn]       := '☑';
+    FDrawingChars[dcEllipsis]       := '…';
+    FDrawingChars[dcProgressFull]   := '█';   FDrawingChars[dcProgressEmpty] := '░';
+    FDrawingChars[dcClose]          := '×';
+    FDrawingChars[dcMenuIcon]       := '☰';
+    FDrawingChars[dcSeparator]      := '│';
+  end
+  else
+  begin
+    FDrawingChars[dcTopLeft]     := '+';  FDrawingChars[dcTopRight]    := '+';
+    FDrawingChars[dcBottomLeft]  := '+';  FDrawingChars[dcBottomRight] := '+';
+    FDrawingChars[dcHoriz]       := '-';  FDrawingChars[dcVert]        := '|';
+    FDrawingChars[dcTeeLeft]     := '+';  FDrawingChars[dcTeeRight]    := '+';
+    FDrawingChars[dcTeeTop]      := '+';  FDrawingChars[dcTeeBottom]   := '+';
+    FDrawingChars[dcCross]       := '+';
+    FDrawingChars[dcScrollUp]    := '^';  FDrawingChars[dcScrollDown]  := 'v';
+    FDrawingChars[dcScrollThumb] := '#';  FDrawingChars[dcScrollTrack] := '|';
+    FDrawingChars[dcComboLeft]      := '[';   FDrawingChars[dcComboRight]    := ']';
+    FDrawingChars[dcComboArrow]     := 'v';
+    FDrawingChars[dcDirIndicator]   := '>';
+    FDrawingChars[dcDirParent]      := '^';
+    FDrawingChars[dcArrowLeft]      := '<';   FDrawingChars[dcArrowRight]    := '>';
+    FDrawingChars[dcArrowUp]        := '^';   FDrawingChars[dcArrowDown]     := 'v';
+    FDrawingChars[dcTreeCollapsed]  := '+';   FDrawingChars[dcTreeExpanded]  := '-';
+    FDrawingChars[dcTreeLeaf]       := ' ';
+    FDrawingChars[dcTreeVert]       := '|';   FDrawingChars[dcTreeBranch]    := '+';
+    FDrawingChars[dcTreeLast]       := '\';
+    FDrawingChars[dcBullet]         := '*';
+    FDrawingChars[dcSelectedMark]   := '>';
+    FDrawingChars[dcCheckOff]       := '-';   FDrawingChars[dcCheckOn]       := 'x';
+    FDrawingChars[dcEllipsis]       := '~';
+    FDrawingChars[dcProgressFull]   := '#';   FDrawingChars[dcProgressEmpty] := '.';
+    FDrawingChars[dcClose]          := 'x';
+    FDrawingChars[dcMenuIcon]       := '=';
+    FDrawingChars[dcSeparator]      := '|';
+  end;
+end;
+
+procedure TApplication.SetUseUnicodeBorders(AValue: Boolean);
+begin
+  FUseUnicodeBorders := AValue;
+  InitDrawingChars;
+end;
+
+function TApplication.GetDrawingChar(ABc: TDrawingChar): string;
+begin
+  Result := FDrawingChars[ABc];
+end;
+
+procedure TApplication.SetDrawingChar(ABc: TDrawingChar; const AValue: string);
+begin
+  FDrawingChars[ABc] := AValue;
+end;
+
+procedure TApplication.DrawChar(ABc: TDrawingChar);
+begin
+  Term.WriteStr(FDrawingChars[ABc]);
+end;
+
+function TApplication.RepeatChar(ABc: TDrawingChar; ACount: Integer): string;
+var I: Integer;
+begin
+  Result := '';
+  for I := 1 to ACount do
+    Result := Result + FDrawingChars[ABc];
+end;
+
 initialization
   Application := TApplication.Create;
   Application.HelpKey := kcF1;
+  Application.UseUnicodeBorders := True;
 
 finalization
   FreeAndNil(Application);

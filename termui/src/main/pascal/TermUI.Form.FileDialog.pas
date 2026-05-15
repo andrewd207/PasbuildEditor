@@ -42,7 +42,7 @@ interface
 uses
   Classes, SysUtils, fpMasks,
   TermUI.StringUtils, TermUI.Terminal,
-  TermUI.Control, TermUI.Forms, TermUI.Application, TermUI.Menu;
+  TermUI.Control, TermUI.Control.ComboBox, TermUI.Forms, TermUI.Application, TermUI.Menu;
 
 type
   TFileDialogMode = (fdOpen, fdSave, fdSelectDir);
@@ -56,7 +56,7 @@ type
 
   TFileDialog = class(TForm)
   private
-    type TFocus = (fsList, fsFilename);
+    type TFocus = (fsList, fsFilename, fsFilterCombo);
   private
     FMode:        TFileDialogMode;
     FCurrentDir:  string;
@@ -64,17 +64,25 @@ type
     FRawCount:    Integer;
     FDisplay:     array of TFileEntry;   { filtered subset shown in list }
     FDisplayCount: Integer;
-    FFilter:      string;                { live substring filter }
     FFileFilter:  string;                { glob pattern e.g. *.pas;*.pp }
     FSel:         Integer;
     FTopRow:      Integer;
     FFilename:    string;
     FFilenameCur: Integer;
     FFocus:       TFocus;
-    FShowHidden:  Boolean;
-    FAccepted:    Boolean;
-    FResultPath:  string;
+    FShowHidden:   Boolean;
+    FAccepted:     Boolean;
+    FResultPath:   string;
+    FFilterCombo:  TComboBox;            { nil when no filters have been added }
+    FWantExtensions: string;
+    FSearchActive:   Boolean;
+    FSearchText:     string;
+    FSearchCursor:   Integer;   { 0-based insert position within FSearchText }
+    FSearchPrevSel:  Integer;
+    FSearchMatched:  Boolean;
 
+    procedure SetFileFilter(const AValue: string);
+    procedure OnFilterChanged(Sender: TObject);
     function  HeaderRows: Integer;
     function  FooterRows: Integer;
     function  ListRows: Integer;
@@ -100,23 +108,44 @@ type
     procedure FilenameMoveRight;
     procedure FilenameHome;
     procedure FilenameEnd;
+    function  FieldLabelWidth: Integer;
     procedure FilenameCalcScroll(out AScroll: Integer);
+
+    procedure ActivateSearch(ACh: Char);
+    procedure DeactivateSearch(AAccept: Boolean);
+    procedure SearchMatch;
+    function  DefaultExtension: string;
+    function  HasWantedExtension(const AName: string): Boolean;
+    function  ApplyWantExtension(const AName: string): string;
 
   protected
     procedure DoPaint; override;
     function  DoKeyDown(var Key: TKeyEvent): Boolean; override;
+    procedure ArrangeChildren; override;
   public
     constructor Create(const ATitle: string = ''); override;
+    destructor  Destroy; override;
 
     procedure SetParams(const AInitialDir: string; AMode: TFileDialogMode;
       const AInitialFilename: string = '');
     function  RunModal: Boolean;
 
+    { Add a named file-type filter shown in the filter combo on the path row.
+      The first filter added becomes active immediately.
+      Tab in the file list moves focus to the combo; Tab/Esc closes it.
+      Example: AddFilter('Pascal files', '*.pas;*.pp') }
+    procedure AddFilter(const AName, APattern: string);
+
     { Semicolon-separated glob patterns for files.  '*' = all (default).
-      Directories are always shown regardless of this filter. }
-    property FileFilter:  string  read FFileFilter write FFileFilter;
-    property Accepted:    Boolean read FAccepted;
-    property ResultPath:  string  read FResultPath;
+      Directories are always shown regardless of this filter.
+      Can be set before or after SetParams; the display updates immediately. }
+    property FileFilter:      string  read FFileFilter      write SetFileFilter;
+    { Semicolon-separated list of extensions (leading dot required, e.g. ".pas;.pp;.lpr").
+      On a Save dialog, if the typed or searched name has none of these extensions
+      (case-insensitive), the first extension in the list is appended automatically. }
+    property WantExtensions:  string  read FWantExtensions  write FWantExtensions;
+    property Accepted:        Boolean read FAccepted;
+    property ResultPath:      string  read FResultPath;
   end;
 
 { One-shot helpers }
@@ -228,6 +257,68 @@ begin
   RebuildDisplay;
 end;
 
+procedure TFileDialog.SetFileFilter(const AValue: string);
+begin
+  if FFileFilter = AValue then Exit;
+  FFileFilter := AValue;
+  if FRawCount > 0 then
+  begin
+    RebuildDisplay;
+    Invalidate;
+  end;
+end;
+
+function ExtractPattern(const AComboItem: string): string;
+{ Items are "Name | Pattern" — return everything after the last " | " }
+var P: Integer;
+begin
+  P := Pos(' | ', AComboItem);
+  if P > 0 then Result := Copy(AComboItem, P + 3, MaxInt)
+  else          Result := AComboItem;
+end;
+
+procedure TFileDialog.OnFilterChanged(Sender: TObject);
+begin
+  if not Assigned(FFilterCombo) then Exit;
+  if (FFilterCombo.SelectedIndex >= 0) and
+     (FFilterCombo.SelectedIndex < FFilterCombo.Items.Count) then
+  begin
+    FFileFilter := ExtractPattern(
+      FFilterCombo.Items[FFilterCombo.SelectedIndex]);
+    FSel := 0; FTopRow := 0;
+    RebuildDisplay;
+  end;
+  { After dropdown closes, return focus to the file list }
+  FFocus := fsList;
+  Invalidate;
+end;
+
+procedure TFileDialog.AddFilter(const AName, APattern: string);
+begin
+  if not Assigned(FFilterCombo) then
+  begin
+    FFilterCombo                       := TComboBox.Create;
+    FFilterCombo.Style                 := csFixed;
+    FFilterCombo.RequireValidSelection := True;
+    FFilterCombo.OpenOnFocus           := True;
+    FFilterCombo.TextAlign             := taRight;
+    FFilterCombo.ForeColor             := clYellow;
+    FFilterCombo.OnChange              := @OnFilterChanged;
+    ArrangeChildren;
+  end;
+  FFilterCombo.Items.Add(AName + ' | ' + APattern);
+  if FFilterCombo.Items.Count = 1 then
+  begin
+    FFilterCombo.SelectedIndex := 0;
+    FFileFilter := APattern;
+    if FRawCount > 0 then
+    begin
+      RebuildDisplay;
+      Invalidate;
+    end;
+  end;
+end;
+
 function TFileDialog.MatchesFileFilter(const AName: string): Boolean;
 var
   Patterns: TStringList;
@@ -265,18 +356,12 @@ begin
     if (FMode = fdSelectDir) and not FRaw[I].IsDir then Continue;
     if FRaw[I].IsDir then
     begin
-      if (FFilter = '') or
-         PosNeutral(LowerCase(FFilter), LowerCase(FRaw[I].Name)) then
-      begin
-        FDisplay[FDisplayCount] := FRaw[I];
-        Inc(FDisplayCount);
-      end;
+      FDisplay[FDisplayCount] := FRaw[I];
+      Inc(FDisplayCount);
     end
     else
     begin
-      if ((FFilter = '') or
-          PosNeutral(LowerCase(FFilter), LowerCase(FRaw[I].Name))) and
-         MatchesFileFilter(FRaw[I].Name) then
+      if MatchesFileFilter(FRaw[I].Name) then
       begin
         FDisplay[FDisplayCount] := FRaw[I];
         Inc(FDisplayCount);
@@ -290,10 +375,11 @@ end;
 
 procedure TFileDialog.NavigateInto(const ADirName: string);
 begin
-  FCurrentDir := IncludeTrailingPathDelimiter(FCurrentDir) + ADirName;
-  FFilter     := '';
-  FSel        := 0;
-  FTopRow     := 0;
+  FCurrentDir   := IncludeTrailingPathDelimiter(FCurrentDir) + ADirName;
+  FSearchActive := False;
+  FSearchText   := '';
+  FSel          := 0;
+  FTopRow       := 0;
   LoadDir;
   Invalidate;
 end;
@@ -304,10 +390,11 @@ begin
   Parent := ExcludeTrailingPathDelimiter(
               ExtractFileDir(ExcludeTrailingPathDelimiter(FCurrentDir)));
   if Parent = '' then Parent := PathDelim;
-  FCurrentDir := Parent;
-  FFilter     := '';
-  FSel        := 0;
-  FTopRow     := 0;
+  FCurrentDir   := Parent;
+  FSearchActive := False;
+  FSearchText   := '';
+  FSel          := 0;
+  FTopRow       := 0;
   LoadDir;
   Invalidate;
 end;
@@ -360,6 +447,7 @@ end;
 
 procedure TFileDialog.EnsureSelVisible;
 begin
+  if FSel < 0 then Exit;
   if FSel < FTopRow then FTopRow := FSel;
   if FSel >= FTopRow + ListRows then FTopRow := FSel - ListRows + 1;
   if FTopRow < 0 then FTopRow := 0;
@@ -367,10 +455,16 @@ end;
 
 { ── Filename field ── }
 
+function TFileDialog.FieldLabelWidth: Integer;
+begin
+  if FMode = fdSelectDir then Result := 12   { ' Directory: ' }
+  else                        Result := 11;  { ' Filename: ' }
+end;
+
 procedure TFileDialog.FilenameCalcScroll(out AScroll: Integer);
 var FieldW: Integer;
 begin
-  FieldW  := Term.Width - 12;
+  FieldW  := Term.Width - FieldLabelWidth;
   AScroll := 0;
   if FFilenameCur - AScroll > FieldW then AScroll := FFilenameCur - FieldW;
   if FFilenameCur - 1 < AScroll      then AScroll := FFilenameCur - 1;
@@ -398,38 +492,153 @@ begin FFilenameCur := 1; Invalidate; end;
 procedure TFileDialog.FilenameEnd;
 begin FFilenameCur := Length(FFilename) + 1; Invalidate; end;
 
+{ ── Inline search ── }
+
+function TFileDialog.DefaultExtension: string;
+var P: Integer;
+begin
+  P := Pos(';', FWantExtensions);
+  if P > 0 then Result := Copy(FWantExtensions, 1, P - 1)
+  else           Result := FWantExtensions;
+end;
+
+function TFileDialog.HasWantedExtension(const AName: string): Boolean;
+var
+  Exts: TStringList;
+  I:    Integer;
+  Lo, Ext: string;
+begin
+  Result := False;
+  if FWantExtensions = '' then Exit;
+  Lo   := LowerCase(AName);
+  Exts := TStringList.Create;
+  try
+    Exts.Delimiter     := ';';
+    Exts.DelimitedText := FWantExtensions;
+    for I := 0 to Exts.Count - 1 do
+    begin
+      Ext := LowerCase(Trim(Exts[I]));
+      if (Ext <> '') and
+         (Copy(Lo, Length(Lo) - Length(Ext) + 1, MaxInt) = Ext) then
+        Exit(True);
+    end;
+  finally
+    Exts.Free;
+  end;
+end;
+
+function TFileDialog.ApplyWantExtension(const AName: string): string;
+begin
+  if (FWantExtensions <> '') and (FMode = fdSave) and
+     not HasWantedExtension(AName) then
+    Result := AName + DefaultExtension
+  else
+    Result := AName;
+end;
+
+procedure TFileDialog.SearchMatch;
+{ Move selection to the first entry whose name starts with FSearchText
+  (case-insensitive).  Falls back to a substring match if no prefix found.
+  Sets FSearchMatched to True if any match was found. }
+var I:  Integer;
+    Lo: string;
+begin
+  FSearchMatched := False;
+  Lo := LowerCase(FSearchText);
+  if Lo = '' then Exit;
+  { Prefix match first }
+  for I := 0 to FDisplayCount - 1 do
+  begin
+    if FDisplay[I].Name = '..' then Continue;
+    if Pos(Lo, LowerCase(FDisplay[I].Name)) = 1 then
+    begin
+      FSel           := I;
+      FSearchMatched := True;
+      EnsureSelVisible;
+      Exit;
+    end;
+  end;
+  { Substring fallback }
+  for I := 0 to FDisplayCount - 1 do
+  begin
+    if FDisplay[I].Name = '..' then Continue;
+    if PosNeutral(Lo, LowerCase(FDisplay[I].Name)) then
+    begin
+      FSel           := I;
+      FSearchMatched := True;
+      EnsureSelVisible;
+      Exit;
+    end;
+  end;
+  { No match — deselect }
+  FSel := -1;
+end;
+
+procedure TFileDialog.ActivateSearch(ACh: Char);
+begin
+  FSearchPrevSel := FSel;
+  FSearchText    := ACh;
+  FSearchCursor  := 1;   { after the first character }
+  FSearchActive  := True;
+  FTopRow        := 0;   { scroll to top so the edit row is always visible }
+  SearchMatch;
+  Invalidate;
+end;
+
+procedure TFileDialog.DeactivateSearch(AAccept: Boolean);
+begin
+  FSearchActive := False;
+  FSearchText   := '';
+  if not AAccept then
+    FSel := FSearchPrevSel;
+  EnsureSelVisible;
+  Invalidate;
+end;
+
 { ── Drawing ── }
 
+procedure TFileDialog.ArrangeChildren;
+const
+  COMBO_W = 32;  { reserved width for the filter combo on the path row }
+var
+  ComboLeft: Integer;
+begin
+  if not Assigned(FFilterCombo) then Exit;
+  ComboLeft := Width - COMBO_W + 1;
+  if ComboLeft < 2 then ComboLeft := 2;
+  FFilterCombo.SetBounds(ComboLeft, 2, Width - ComboLeft + 1, 1);
+end;
+
 procedure TFileDialog.DrawPath;
-var PathStr, Shown, FilterHint: string;
+const
+  COMBO_W = 32;
+var
+  PathStr, Shown: string;
+  PathAvail: Integer;
 begin
   Term.GotoXY(1, 2);
   Term.ClearToEOL;
-  PathStr := FCurrentDir;
-  FilterHint := '';
-  if (FFileFilter <> '') and (FFileFilter <> '*') then
-    FilterHint := '  [' + FFileFilter + ']';
-  if Length(PathStr) + Length(FilterHint) > Term.Width - 2 then
-    Shown := '~' + Copy(PathStr, Length(PathStr) - (Term.Width - 4 - Length(FilterHint)), MaxInt)
+  PathStr   := FCurrentDir;
+  PathAvail := Width - COMBO_W - 1;  { chars available for path text }
+  if PathAvail < 4 then PathAvail := 4;
+
+  if Length(PathStr) > PathAvail then
+    Shown := '~' + Copy(PathStr, Length(PathStr) - PathAvail + 2, MaxInt)
   else
     Shown := PathStr;
+
   Term.WriteStr(' ');
   Term.SetFG(clBrightCyan);
   Term.WriteStr(Shown);
-  if FilterHint <> '' then
-  begin
-    Term.SetFG(clBrightBlack);
-    Term.WriteStr(FilterHint);
-  end;
   Term.ResetColors;
-  DrawRule(3, 1, Term.Width);
+  DrawRule(3, 1, Width);
 end;
 
 procedure TFileDialog.DrawList;
 var
   RI, Idx, NameW: Integer;
   E:              TFileEntry;
-  Name, SizeStr, Line: string;
+  Name, SizeStr, Line, EditStr: string;
   Row:            Integer;
   IsSelected:     Boolean;
 begin
@@ -446,11 +655,29 @@ begin
     E          := FDisplay[Idx];
     IsSelected := (FFocus = fsList) and (Idx = FSel);
 
+    { Search edit overlays the '..' row while search is active }
+    if (E.Name = '..') and FSearchActive then
+    begin
+      Term.SetFG(clBlack);
+      Term.SetBG(clCyan);
+      { Insert cursor marker '_' at FSearchCursor position }
+      EditStr := FSearchText;
+      if FSearchCursor < Length(EditStr) then
+        EditStr[FSearchCursor + 1] := '_'
+      else
+        EditStr := EditStr + '_';
+      Name := '/ ' + EditStr;
+      Name := Name + StringOfChar(' ', Term.Width - Length(Name));
+      Term.WriteStr(Copy(Name, 1, Term.Width));
+      Term.ResetColors;
+      Continue;
+    end;
+
     { Name prefix + truncation }
     if E.Name = '..' then
-      Name := ' [..] ..'
+      Name := ' ' + Application.DrawingChar[dcDirParent] + ' ..'
     else if E.IsDir then
-      Name := ' [+] ' + E.Name
+      Name := ' ' + Application.DrawingChar[dcDirIndicator] + ' ' + E.Name
     else
       Name := '  ' + E.Name;
     if Length(Name) > NameW then
@@ -481,7 +708,10 @@ begin
     Term.WriteStr(Line);
     if SizeStr <> '' then
     begin
-      if not IsSelected then Term.SetFG(clBrightBlack);
+      if IsSelected then
+        Term.SetFG(clBlack)
+      else
+        Term.ResetColors;
       Term.WriteStr(StringOfChar(' ', SIZE_COL_W - Length(SizeStr)));
       Term.WriteStr(SizeStr);
     end
@@ -495,19 +725,7 @@ begin
   begin
     Term.GotoXY(3, HEADER_ROWS + 1);
     Term.SetFG(clBrightBlack);
-    if FFilter <> '' then
-      Term.WriteStr('(no matches for "' + FFilter + '")')
-    else
-      Term.WriteStr('(empty directory)');
-    Term.ResetColors;
-  end;
-
-  { Live filter indicator in first header row margin }
-  if FFilter <> '' then
-  begin
-    Term.GotoXY(Term.Width - Length(FFilter) - 3, 3);
-    Term.SetFG(clBrightBlack);
-    Term.WriteStr(' /' + FFilter + '/');
+    Term.WriteStr('(empty directory)');
     Term.ResetColors;
   end;
 end;
@@ -518,13 +736,14 @@ var
   VisStr: string;
 begin
   H      := Term.Height;
-  FieldW := Term.Width - 12;
+  FieldW := Term.Width - FieldLabelWidth;
   DrawRule(H - 2, 1, Term.Width);
   Term.GotoXY(1, H - 1);
   Term.ClearToEOL;
   if FFocus = fsFilename then Term.SetFG(clBrightWhite)
   else                        Term.SetFG(clBrightBlack);
-  Term.WriteStr(' Filename: ');
+  if FMode = fdSelectDir then Term.WriteStr(' Directory: ')
+  else                        Term.WriteStr(' Filename: ');
   Term.ResetColors;
   FilenameCalcScroll(Scroll);
   VisStr := CopyNeutral(FFilename, Scroll, FieldW);
@@ -541,7 +760,10 @@ begin
   Term.SetFG(clBrightBlack);
   case FFocus of
     fsList:
-      Term.WriteStr(' ↑↓ Browse  Enter Select  Tab Filename  H Hidden  Esc Cancel');
+      if FSearchActive then
+        Term.WriteStr(' Type to search  Enter Confirm  Esc Cancel search  Backspace Delete')
+      else
+        Term.WriteStr(' ↑↓ Browse  ← Up  → Open  Enter Select  Tab Filename  H Hidden  Esc Cancel');
     fsFilename:
       Term.WriteStr(' Enter Accept  Tab List  ↑↓ Browse  Esc Cancel');
   end;
@@ -554,12 +776,15 @@ var Scroll, H: Integer;
 begin
   case FFocus of
     fsList:
-      Term.GotoXY(1, HEADER_ROWS + 1 + (FSel - FTopRow));
+      if FSearchActive then
+        Term.GotoXY(3 + FSearchCursor, HEADER_ROWS + 1)
+      else if FSel >= 0 then
+        Term.GotoXY(1, HEADER_ROWS + 1 + (FSel - FTopRow));
     fsFilename:
       begin
         FilenameCalcScroll(Scroll);
         H := Term.Height;
-        Term.GotoXY(11 + (FFilenameCur - Scroll), H - 1);
+        Term.GotoXY(FieldLabelWidth + (FFilenameCur - Scroll), H - 1);
       end;
   end;
 end;
@@ -571,6 +796,11 @@ begin
   Term.ClearScreen;
   DrawHeader(Title, 1);
   DrawPath;
+  if Assigned(FFilterCombo) then
+  begin
+    FFilterCombo.Invalidate;
+    FFilterCombo.Paint;
+  end;
   DrawList;
   DrawFilenameField;
   DrawHintBar;
@@ -588,7 +818,21 @@ begin
     case Key.Code of
       kcEscape:    Close(1);
       kcEnter:     HandleAccept;
-      kcTab:       begin FFocus := fsList; Invalidate; end;
+      kcTab:
+        { Forward: fsFilename → fsFilterCombo → (land on fsList) }
+        begin
+          if Assigned(FFilterCombo) then
+          begin
+            FFocus := fsFilterCombo;
+            FFilterCombo.GainFocus;
+            FFocus := fsList;  { always land on fsList going forward past combo }
+            Invalidate;
+          end
+          else
+            begin FFocus := fsList; Invalidate; end;
+        end;
+      kcShiftTab:  { Backward: fsFilename → fsList }
+        begin FFocus := fsList; Invalidate; end;
       kcUp:        begin FFocus := fsList; Invalidate; end;
       kcDown:      begin FFocus := fsList; Invalidate; end;
       kcLeft:      FilenameMoveLeft;
@@ -604,13 +848,117 @@ begin
     Exit;
   end;
 
-  { fsList }
+  if FFocus = fsFilterCombo then
+  begin
+    { Route to combo; on Esc/Tab the combo's OnChange fires and resets FFocus }
+    if Assigned(FFilterCombo) then
+      Result := FFilterCombo.KeyDown(Key)
+    else
+      Result := False;
+    if Result then Invalidate;
+    Exit;
+  end;
+
+  { fsList — search active: only search keys have effect }
+  if FSearchActive then
+  begin
+    case Key.Code of
+      kcEnter:
+        begin
+          if FSearchMatched then
+          begin
+            DeactivateSearch(True);
+            { Cursor landed on a file → populate filename field }
+            if (FSel >= 0) and (FSel < FDisplayCount) and
+               not FDisplay[FSel].IsDir then
+            begin
+              FFilename    := ApplyWantExtension(FDisplay[FSel].Name);
+              FFilenameCur := Length(FFilename) + 1;
+              FFocus       := fsFilename;
+            end;
+          end
+          else if FMode = fdSave then
+          begin
+            { No match in a Save dialog → use typed text as filename }
+            FFilename    := ApplyWantExtension(FSearchText);
+            FFilenameCur := Length(FFilename) + 1;
+            FSearchActive := False;
+            FSearchText   := '';
+            FSel          := FSearchPrevSel;
+            EnsureSelVisible;
+            FFocus := fsFilename;
+          end
+          else
+            DeactivateSearch(False);  { no match in Open — just cancel search }
+          Invalidate;
+        end;
+      kcEscape:
+        DeactivateSearch(False);
+      kcLeft:
+        begin
+          if FSearchCursor > 0 then Dec(FSearchCursor);
+          Invalidate;
+        end;
+      kcRight:
+        begin
+          if FSearchCursor < Length(FSearchText) then Inc(FSearchCursor);
+          Invalidate;
+        end;
+      kcHome:
+        begin FSearchCursor := 0; Invalidate; end;
+      kcEnd:
+        begin FSearchCursor := Length(FSearchText); Invalidate; end;
+      kcBackspace:
+        begin
+          if FSearchCursor > 0 then
+          begin
+            DeleteNeutral(FSearchText, FSearchCursor - 1, 1);
+            Dec(FSearchCursor);
+            if FSearchText = '' then
+              DeactivateSearch(False)
+            else
+            begin
+              SearchMatch;
+              Invalidate;
+            end;
+          end;
+        end;
+      kcDelete:
+        begin
+          if FSearchCursor < Length(FSearchText) then
+          begin
+            DeleteNeutral(FSearchText, FSearchCursor, 1);
+            if FSearchText = '' then
+              DeactivateSearch(False)
+            else
+            begin
+              SearchMatch;
+              Invalidate;
+            end;
+          end;
+        end;
+      kcChar:
+        if Key.Ch >= ' ' then
+        begin
+          InsertNeutral(FSearchText, Key.Ch, FSearchCursor);
+          Inc(FSearchCursor);
+          SearchMatch;
+          Invalidate;
+        end;
+    else
+      { All other keys consumed silently while search is open }
+    end;
+    Exit;
+  end;
+
+  { fsList — normal navigation }
   case Key.Code of
     kcEscape: Close(1);
 
     kcUp:
       begin
-        if FSel > 0 then Dec(FSel);
+        if FSel > 0 then Dec(FSel)
+        else if FSel < 0 then FSel := 0;
         EnsureSelVisible; Invalidate;
       end;
     kcDown:
@@ -632,19 +980,43 @@ begin
       end;
     kcHome: begin FSel := 0;                              EnsureSelVisible; Invalidate; end;
     kcEnd:  begin FSel := Max(0, FDisplayCount - 1);      EnsureSelVisible; Invalidate; end;
-    kcEnter:     SelectCurrent;
-    kcTab:       begin FFocus := fsFilename; Invalidate; end;
-
-    kcBackspace:
+    kcEnter: SelectCurrent;
+    kcTab:
+      { Forward: fsList → fsFilename }
+      begin FFocus := fsFilename; Invalidate; end;
+    kcShiftTab:
+      { Backward: fsList → fsFilterCombo → (land on fsFilename) }
       begin
-        if FFilter <> '' then
+        if Assigned(FFilterCombo) then
         begin
-          DeleteNeutral(FFilter, Length(FFilter) - 1, 1);
-          FSel := 0; FTopRow := 0;
-          RebuildDisplay; Invalidate;
+          FFocus := fsFilterCombo;
+          FFilterCombo.GainFocus;
+          FFocus := fsFilename;  { always land on fsFilename going backward past combo }
+          Invalidate;
         end
         else
-          NavigateUp;
+          begin FFocus := fsFilename; Invalidate; end;
+      end;
+
+    kcLeft:
+      NavigateUp;
+
+    kcRight:
+      begin
+        if (FSel >= 0) and (FSel < FDisplayCount) then
+        begin
+          if FDisplay[FSel].Name = '..' then
+            NavigateUp
+          else if FDisplay[FSel].IsDir then
+            NavigateInto(FDisplay[FSel].Name)
+          else
+          begin
+            FFilename    := ApplyWantExtension(FDisplay[FSel].Name);
+            FFilenameCur := Length(FFilename) + 1;
+            FFocus       := fsFilename;
+            Invalidate;
+          end;
+        end;
       end;
 
     kcChar:
@@ -658,11 +1030,7 @@ begin
             end;
         else
           if Key.Ch >= ' ' then
-          begin
-            FFilter := FFilter + Key.Ch;
-            FSel    := 0; FTopRow := 0;
-            RebuildDisplay; Invalidate;
-          end;
+            ActivateSearch(Key.Ch);
         end;
       end;
 
@@ -681,6 +1049,12 @@ begin
   FFocus       := fsList;
 end;
 
+destructor TFileDialog.Destroy;
+begin
+  FFilterCombo.Free;
+  inherited;
+end;
+
 procedure TFileDialog.SetParams(const AInitialDir: string;
   AMode: TFileDialogMode; const AInitialFilename: string);
 begin
@@ -689,7 +1063,6 @@ begin
   FResultPath  := '';
   FFilename    := AInitialFilename;
   FFilenameCur := Length(FFilename) + 1;
-  FFilter      := '';
   FSel         := 0;
   FTopRow      := 0;
   FFocus       := fsList;

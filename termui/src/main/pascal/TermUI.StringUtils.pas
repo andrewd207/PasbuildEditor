@@ -31,6 +31,10 @@ function PosNeutral(const ASubStr, AStr: string): Boolean;
 { Deletes ACount characters from AStr starting at 0-based position AFrom. }
 procedure DeleteNeutral(var AStr: string; AFrom, ACount: Integer);
 
+{ Inserts ACh into AStr before the character at 0-based position APos.
+  APos = 0 prepends; APos = Length(AStr) appends. }
+procedure InsertNeutral(var AStr: string; ACh: Char; APos: Integer);
+
 { Returns the character at 0-based position AIndex. }
 function CharFromIndex(const AStr: string; AIndex: Integer): Char;
 
@@ -78,6 +82,11 @@ end;
 procedure DeleteNeutral(var AStr: string; AFrom, ACount: Integer);
 begin
   Delete(AStr, AFrom + 1, ACount);
+end;
+
+procedure InsertNeutral(var AStr: string; ACh: Char; APos: Integer);
+begin
+  Insert(ACh, AStr, APos + 1);
 end;
 
 function CharFromIndex(const AStr: string; AIndex: Integer): Char;

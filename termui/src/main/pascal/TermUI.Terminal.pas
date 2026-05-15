@@ -30,7 +30,7 @@ type
     { Editing }
     kcEnter, kcEscape, kcBackspace, kcDelete,
     { Tab }
-    kcTab, kcShiftTab,
+    kcTab, kcShiftTab, kcCtrlTab,
     { Printable character — Key.Ch holds the char }
     kcChar,
     { Ctrl+letter.  Ctrl+H/I/J/M/[ are already kcBackspace/kcTab/kcEnter/kcEscape. }
@@ -54,11 +54,61 @@ type
     clBlack,       clRed,           clGreen,       clYellow,
     clBlue,        clMagenta,       clCyan,        clWhite,
     clBrightBlack, clBrightRed,     clBrightGreen, clBrightYellow,
-    clBrightBlue,  clBrightMagenta, clBrightCyan,  clBrightWhite
+    clBrightBlue,  clBrightMagenta, clBrightCyan,  clBrightWhite,
+    { Concrete stand-in for the terminal background color (black).
+      Use this instead of clDefault when you need a legible inversion —
+      clDefault swapped with clDefault is still clDefault. }
+    clBackground
   );
 
+  { Named drawing characters used by controls and borders.
+    TApplication.DrawChar / .DrawingChar[] provide the actual glyph based on
+    the UseUnicodeBorders setting and any per-char override. }
+  TDrawingChar = (
+    { Box corners }
+    dcTopLeft,      { + / ┌ }  dcTopRight,     { + / ┐ }
+    dcBottomLeft,   { + / └ }  dcBottomRight,  { + / ┘ }
+    { Lines }
+    dcHoriz,        { - / ─ }  dcVert,         { | / │ }
+    { T-junctions }
+    dcTeeLeft,      { + / ├ }  dcTeeRight,     { + / ┤ }
+    dcTeeTop,       { + / ┬ }  dcTeeBottom,    { + / ┴ }
+    dcCross,        { + / ┼ }
+    { Scrollbar track elements }
+    dcScrollUp,     { ^ / ▲ }  dcScrollDown,   { v / ▼ }
+    dcScrollThumb,  { # / █ }  dcScrollTrack,  { | / │ }
+    { Combo box }
+    dcComboLeft,    { [ / [ }  dcComboRight,   { ] / ] }
+    dcComboArrow,   { v / ▼ }
+    { File/directory indicators }
+    dcDirIndicator,  { > / ▶ }
+    { Parent-directory / go-up entry.  Alternatives: ⬆ (U+2B06, bolder),
+      ↩ (U+21A9, back-hook), ⇡ (U+21E1, dashed).  ASCII fallback: ^ }
+    dcDirParent,     { ^ / ↑ }
+    { Navigation arrows (breadcrumbs, pagination — distinct from scrollbar arrows) }
+    dcArrowLeft,     { < / ← }  dcArrowRight,    { > / → }
+    dcArrowUp,       { ^ / ↑ }  dcArrowDown,     { v / ↓ }
+    { Tree / hierarchy view }
+    dcTreeCollapsed, { + / ▶ }  dcTreeExpanded,  { - / ▼ }
+    dcTreeLeaf,      {   /   }
+    dcTreeVert,      { | / │ }  dcTreeBranch,    { + / ├ }  dcTreeLast, { \ / └ }
+    { List / selection markers }
+    dcBullet,        { * / • }
+    dcSelectedMark,  { > / ► }
+    dcCheckOff,      { - / ☐ }  dcCheckOn,       { x / ☑ }
+    { Text overflow }
+    dcEllipsis,      { ~ / … }
+    { Progress bar }
+    dcProgressFull,  { # / █ }  dcProgressEmpty, { . / ░ }
+    { Misc UI chrome }
+    dcClose,         { x / × }
+    dcMenuIcon,      { = / ☰ }
+    dcSeparator      { | / │ }
+  );
+
+  { Each buffer cell holds one Unicode codepoint as a UTF-8 sequence (1-4 bytes). }
   TScreenCell = record
-    Ch:        Char;
+    Ch:        string[4];
     FG, BG:    TColor;
     Underline: Boolean;
   end;
@@ -156,11 +206,13 @@ uses
 const
   FGCode: array[TColor] of Integer = (
     39, 30, 31, 32, 33, 34, 35, 36, 37,
-    90, 91, 92, 93, 94, 95, 96, 97
+    90, 91, 92, 93, 94, 95, 96, 97,
+    30  { clBackground — black foreground }
   );
   BGCode: array[TColor] of Integer = (
     49, 40, 41, 42, 43, 44, 45, 46, 47,
-    100, 101, 102, 103, 104, 105, 106, 107
+    100, 101, 102, 103, 104, 105, 106, 107,
+    40  { clBackground — black background }
   );
 
 var
@@ -176,9 +228,7 @@ begin
   SetLength(FBack,  W * H);
   SetLength(FFront, W * H);
   BlankBuffer(FBack);
-  BlankBuffer(FFront);
-  { Mark front as all-invalid so first flush redraws everything }
-  FillChar(FFront[0], Length(FFront) * SizeOf(TScreenCell), $FF);
+  InvalidateFront;  { mark every front cell dirty so the first flush redraws all }
 end;
 
 procedure TTerminal.BlankBuffer(var Buf: TScreenBuffer);
@@ -260,23 +310,17 @@ end;
 
 procedure TTerminal.WriteStr(const S: string);
 var
-  I, Idx: Integer;
-  C: Char;
+  I, Idx, SeqLen: Integer;
+  C: string;
 begin
-  for I := 0 to Length(S) - 1 do
+  I := 1;
+  while I <= Length(S) do
   begin
-    C := S.Index[I];
-    if C = #10 then
-    begin
-      Inc(FCurY);
-      FCurX := 1;
-      Continue;
-    end;
-    if C = #13 then
-    begin
-      FCurX := 1;
-      Continue;
-    end;
+    SeqLen := UTF8SeqLen(S, I);
+    C := Copy(S, I, SeqLen);
+    Inc(I, SeqLen);
+    if C = #10 then begin Inc(FCurY); FCurX := 1; Continue; end;
+    if C = #13 then begin FCurX := 1;             Continue; end;
     if (FCurX >= 1) and (FCurX <= FBufW) and
        (FCurY >= 1) and (FCurY <= FBufH) then
     begin
@@ -286,7 +330,7 @@ begin
       FBack[Idx].BG        := FCurBG;
       FBack[Idx].Underline := FCurUL;
     end;
-    Inc(FCurX);
+    Inc(FCurX);  { one visual column per codepoint }
   end;
 end;
 
@@ -313,8 +357,11 @@ begin
 end;
 
 procedure TTerminal.InvalidateFront;
+var I: Integer;
 begin
-  FillChar(FFront[0], Length(FFront) * SizeOf(TScreenCell), $FF);
+  { Use #0 as sentinel — differs from every valid painted cell (spaces at minimum) }
+  for I := 0 to High(FFront) do
+    FFront[I].Ch := #0;
 end;
 
 { ── Flush: diff and emit ── }
@@ -391,7 +438,7 @@ begin
       Emit(B.Ch);
       Inc(LastX);
       RowHadEmit := True;
-      if Ord(B.Ch) > $7F then RowHadMultiByte := True;
+      if (Length(B.Ch) > 0) and (Ord(B.Ch[1]) > $7F) then RowHadMultiByte := True;
 
       FFront[Idx] := B;
     end;
