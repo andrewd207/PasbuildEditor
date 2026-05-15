@@ -10,6 +10,7 @@
   <modules>
     <module>termui</module>
     <module>pasbuildeditor</module>
+    <module activeByDefault="false">termui-examples</module>
   </modules>
   <profiles>
     <profile>
