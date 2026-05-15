@@ -1,0 +1,51 @@
+= TermUI.Control.VBox
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TVBox` stacks children vertically (top to bottom), distributing available height according to each child's <<container.adoc#TLayoutHint,TLayoutHint>>.
+
+== TVBox
+
+Extends <<container.adoc#TMultiContainerControl,TMultiContainerControl>>.
+
+[source,pascal]
+----
+TVBox = class(TMultiContainerControl)
+  procedure ArrangeChildren; override;
+end;
+----
+
+=== Layout algorithm
+
+. Sum the heights of all `lhFixed` children.
+. Subtract from the container's `Height` to get the stretch budget.
+. Divide the budget equally among `lhStretch` children.
+. Distribute any leftover rows one-by-one starting from the first stretch child.
+. Set each child's bounds in top-to-bottom order, full container width.
+
+=== Example
+
+[source,pascal]
+----
+var Box: TVBox;
+Box := TVBox.Create;
+Box.SetBounds(1, 1, 80, 24);
+
+Header := TLabel.Create;
+Box.AddFixedChild(Header, 1);     // always 1 row
+
+Content := TTextEditor.Create;
+Box.AddChild(Content);            // stretches to fill remaining rows
+
+StatusBar := TLabel.Create;
+Box.AddFixedChild(StatusBar, 1);  // always 1 row
+----
+
+== See also
+
+* <<hbox.adoc#,TermUI.Control.HBox>> — horizontal layout
+* <<container.adoc#,TermUI.Control.Container>> — base classes and TLayoutHint
+* <<tabcontainer.adoc#,TermUI.Control.TabContainer>> — tabbed pages

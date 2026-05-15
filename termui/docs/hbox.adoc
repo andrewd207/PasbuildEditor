@@ -1,0 +1,48 @@
+= TermUI.Control.HBox
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`THBox` arranges children side by side horizontally (left to right), distributing available width according to each child's <<container.adoc#TLayoutHint,TLayoutHint>>.
+
+== THBox
+
+Extends <<container.adoc#TMultiContainerControl,TMultiContainerControl>>.
+
+[source,pascal]
+----
+THBox = class(TMultiContainerControl)
+  procedure ArrangeChildren; override;
+end;
+----
+
+=== Layout algorithm
+
+. Sum the widths of all `lhFixed` children.
+. Subtract from the container's `Width` to get the stretch budget.
+. Divide the budget equally among `lhStretch` children.
+. Distribute any leftover columns one-by-one starting from the first stretch child.
+. Set each child's bounds left to right, full container height.
+
+=== Example
+
+[source,pascal]
+----
+var Box: THBox;
+Box := THBox.Create;
+Box.SetBounds(1, 1, 80, 24);
+
+FileTree := TTextEditor.Create;
+Box.AddFixedChild(FileTree, 20);   // always 20 columns wide
+
+Editor := TTextEditor.Create;
+Box.AddChild(Editor);              // fills remaining columns
+----
+
+== See also
+
+* <<vbox.adoc#,TermUI.Control.VBox>> — vertical layout
+* <<container.adoc#,TermUI.Control.Container>> — base classes and TLayoutHint
+* <<tabcontainer.adoc#,TermUI.Control.TabContainer>> — tabbed pages

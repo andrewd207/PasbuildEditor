@@ -1,0 +1,82 @@
+= TermUI.Control
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TermUI.Control` defines `TControl`, the base class for every visible, interactive element in the library, along with the `IContainer` interface and `THelpEvent` type used throughout the hierarchy.
+
+== IContainer
+
+[source,pascal]
+----
+IContainer = interface
+  procedure ArrangeChildren;
+  function  ChildCount: Integer;
+  function  GetChild(AIndex: Integer): TControl;
+  procedure AddChild(AControl: TControl);
+end;
+----
+
+CORBA interface (`{$interfaces corba}`) — no `IUnknown`, no reference counting.
+Implemented by <<forms.adoc#,TForm>>, <<container.adoc#TContainerControl,TContainerControl>>, and <<container.adoc#TMultiContainerControl,TMultiContainerControl>> (and its subclasses).
+
+`ArrangeChildren` is called automatically from `DoBoundsChanged`, so the entire tree recalculates layout whenever terminal dimensions change.
+
+== TControl
+
+[source,pascal]
+----
+TControl = class
+  procedure SetBounds(ALeft, ATop, AWidth, AHeight: Integer); virtual;
+  procedure Invalidate; virtual;
+  procedure Paint;
+  function  KeyDown(var Key: TKeyEvent): Boolean;
+  function  Help: Boolean;
+
+  property Left, Top, Width, Height: Integer;
+  property Visible: Boolean;
+  property Enabled: Boolean;
+  property OnKeyDown:       TKeyDownEvent;
+  property OnPaint:         TNotifyEvent;
+  property OnBoundsChanged: TNotifyEvent;
+  property OnHelp:          THelpEvent;
+end;
+----
+
+=== Coordinate system
+
+`Left` and `Top` are 1-based terminal coordinates of the control's top-left corner.
+`GotoLocal(X, Y)` converts control-local 1-based coordinates to absolute terminal coordinates.
+
+=== Bounds change cascade
+
+`SetBounds` stores new bounds, then:
+
+. Calls `DoBoundsChanged` (virtual — override to recalculate layout or display state).
+. Fires `OnBoundsChanged`.
+. Calls `Invalidate`.
+
+If bounds are unchanged the call is a no-op.
+Containers override `DoBoundsChanged` to call `ArrangeChildren`, which calls `SetBounds` on each child — the cascade propagates automatically to the full subtree.
+
+=== Help propagation
+
+Calling `Help` (or pressing <<application.adoc#HelpKey,Application.HelpKey>>) triggers:
+
+. `DoHelp` (virtual) — containers try their focused child first.
+. `OnHelp` event if `DoHelp` returned `False`.
+
+Return `True` from either to stop propagation.
+
+=== Painting
+
+`Paint` calls `DoPaint` only when `FInvalidated` is set and the control is visible.
+Override `DoPaint` to draw; always call `inherited DoPaint` at the end to clear the flag and fire `OnPaint`.
+
+== See also
+
+* <<forms.adoc#,TermUI.Forms>> — TForm implements IContainer
+* <<container.adoc#,TermUI.Control.Container>> — layout-aware container controls
+* <<application.adoc#,TermUI.Application>> — drives the paint/key loop

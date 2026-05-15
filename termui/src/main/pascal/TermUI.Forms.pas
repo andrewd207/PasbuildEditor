@@ -10,6 +10,7 @@
 unit TermUI.Forms;
 
 {$mode objfpc}{$H+}
+{$interfaces corba}
 
 interface
 
@@ -22,27 +23,36 @@ type
   { A full-screen (or bounded) container of TControl children.
     Owns its children. Focused child gets first crack at key events,
     then the form's own OnKeyDown fires if nothing consumed the key.
-    ModalResult <> 0 signals that ShowModal should return. }
-  TForm = class(TControl)
+    ModalResult <> 0 signals that ShowModal should return.
+    Implements IContainer — override ArrangeChildren to drive layout
+    from DoBoundsChanged rather than setting child bounds manually. }
+  TForm = class(TControl, IContainer)
   private
     FTitle:        string;
     FControls:     TControlList;
     FFocusIndex:   Integer;
     FModalResult:  Integer;
+    FOverlay:      Boolean;
     FOnActivate:   TNotifyEvent;
     FOnDeactivate: TNotifyEvent;
     function  NextFocusable(AFrom, ADir: Integer): Integer;
   protected
     procedure DoPaint; override;
     function  DoKeyDown(var Key: TKeyEvent): Boolean; override;
+    function  DoHelp: Boolean; override;
+    { Calls ArrangeChildren so subclasses only need to override that. }
+    procedure DoBoundsChanged; override;
+    { Override to reposition children when this form's bounds change.
+      Base implementation does nothing (manual layout). }
+    procedure ArrangeChildren; virtual;
   public
     constructor Create(const ATitle: string = ''); reintroduce; virtual;
     destructor Destroy; override;
 
-    { Add a child control. The form takes ownership. }
-    procedure AddControl(AControl: TControl);
-    function  ControlCount: Integer;
-    function  GetControl(AIndex: Integer): TControl;
+    { IContainer }
+    procedure AddChild(AControl: TControl);
+    function  ChildCount: Integer;
+    function  GetChild(AIndex: Integer): TControl;
 
     procedure FocusNext;
     procedure FocusPrev;
@@ -57,6 +67,9 @@ type
 
     property Title:        string       read FTitle        write FTitle;
     property ModalResult:  Integer      read FModalResult  write FModalResult;
+    { When True, TApplication repaints the form beneath this one first so the
+      overlay appears on top of live content rather than a blank screen. }
+    property Overlay:      Boolean      read FOverlay      write FOverlay;
     property OnActivate:   TNotifyEvent read FOnActivate   write FOnActivate;
     property OnDeactivate: TNotifyEvent read FOnDeactivate write FOnDeactivate;
   end;
@@ -79,21 +92,30 @@ begin
   inherited;
 end;
 
-procedure TForm.AddControl(AControl: TControl);
+procedure TForm.AddChild(AControl: TControl);
 begin
   FControls.Add(AControl);
   if FFocusIndex < 0 then
     FFocusIndex := 0;
 end;
 
-function TForm.ControlCount: Integer;
+function TForm.ChildCount: Integer;
 begin
   Result := FControls.Count;
 end;
 
-function TForm.GetControl(AIndex: Integer): TControl;
+function TForm.GetChild(AIndex: Integer): TControl;
 begin
   Result := FControls[AIndex];
+end;
+
+procedure TForm.DoBoundsChanged;
+begin
+  ArrangeChildren;
+end;
+
+procedure TForm.ArrangeChildren;
+begin
 end;
 
 function TForm.NextFocusable(AFrom, ADir: Integer): Integer;
@@ -159,6 +181,18 @@ begin
     if FControls[I].Invalidated then
       FControls[I].Paint;
   inherited DoPaint;
+end;
+
+function TForm.DoHelp: Boolean;
+var FC: TControl;
+begin
+  FC := FocusedControl;
+  if Assigned(FC) then
+  begin
+    Result := FC.Help;
+    if Result then Exit;
+  end;
+  Result := inherited DoHelp;
 end;
 
 function TForm.DoKeyDown(var Key: TKeyEvent): Boolean;

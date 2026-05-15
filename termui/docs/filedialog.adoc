@@ -1,0 +1,153 @@
+= TermUI.Form.FileDialog
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TFileDialog` is a full-filesystem file picker that supports open, save, and directory-select modes.
+It renders a two-column list (name + condensed size), with live text filtering, hidden-file toggle, and symlink coloring.
+
+Convenience functions `RunOpenDialog`, `RunSaveDialog`, and `RunDirDialog` are provided for one-liner usage.
+
+== TFileDialogMode
+
+[source,pascal]
+----
+TFileDialogMode = (fdOpen, fdSave, fdSelectDir);
+----
+
+== TFileDialog
+
+Extends <<forms.adoc#,TForm>>.
+
+[source,pascal]
+----
+TFileDialog = class(TForm)
+  procedure SetParams(const AInitialDir: string; AMode: TFileDialogMode;
+    const AInitialFilename: string = '');
+  function RunModal: Boolean;   // True = accepted
+
+  property FileFilter:  string;   // glob(s) separated by ';', default '*'
+  property Accepted:    Boolean;
+  property ResultPath:  string;
+end;
+----
+
+== Convenience functions
+
+[source,pascal]
+----
+function RunOpenDialog(var APath: string;
+  const AInitialDir: string = '';
+  const AFilter: string = '*'): Boolean;
+
+function RunSaveDialog(var APath: string;
+  const AInitialDir: string = '';
+  const AFilter: string = '*'): Boolean;
+
+function RunDirDialog(var APath: string;
+  const AInitialDir: string = ''): Boolean;
+----
+
+== File list
+
+=== Layout
+
+----
+/home/user/src          [*.pas;*.pp]
+────────────────────────────────────
+..                              <dir>
+  src/                          <dir>
+  readme.adoc                  1.2K
+  main.pas                      34K
+────────────────────────────────────
+  /filter/
+----
+
+* Directories are listed before files, both groups sorted alphabetically.
+* Size column (`SIZE_COL_W = 6`) is right-aligned; blank for directories.
+* The current filter glob is shown in the path row: `[*.pas;*.pp]`.
+* A live text filter appears on the separator row as `/text/`.
+
+=== Condensed sizes
+
+[cols="1,2"]
+|===
+| Range | Format example
+
+| < 1 KB
+| `512B`
+
+| < 1 MB
+| `1.2K`
+
+| < 1 GB
+| `34M`
+
+| ≥ 1 GB
+| `1.3G`
+|===
+
+=== Symlink coloring (Unix)
+
+Entries with `faSymLink` in `TSearchRec.Attr` are rendered in `clBrightYellow`.
+
+== Key bindings
+
+=== File list focus
+
+[cols="1,3"]
+|===
+| Key | Action
+
+| `Up` / `Down`
+| Move selection
+
+| `Enter`
+| Enter directory or accept file
+
+| `Backspace`
+| Remove last filter char; if filter is empty, navigate to parent directory
+
+| `Tab`
+| Switch focus to filename field (fdOpen / fdSave)
+
+| `h` / `H`
+| Toggle hidden files
+
+| `Escape`
+| Cancel
+|===
+
+Typing any printable character appends to the live filter.
+
+=== Filename field focus (fdOpen / fdSave)
+
+[cols="1,3"]
+|===
+| Key | Action
+
+| `Tab`
+| Switch focus back to file list
+
+| `Enter`
+| Accept the typed filename
+
+| `Escape`
+| Cancel
+|===
+
+Standard <<lineeditor.adoc#,TTextEdit>> editing keys apply.
+
+== FileFilter
+
+`FileFilter` is a semicolon-separated list of globs: `*.pas;*.pp`.
+Matching uses `MatchesMask` from the `Masks` unit.
+Directories are always shown regardless of the filter.
+
+== See also
+
+* <<forms.adoc#,TermUI.Forms>> — TForm base
+* <<lineeditor.adoc#,TermUI.Control.LineEditor>> — filename field
+* <<application.adoc#,TermUI.Application>> — ShowModal

@@ -1,0 +1,102 @@
+= TermUI.Form.Peek
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TPeekForm` is an overlay panel anchored to one edge of the terminal.
+It extends <<forms.adoc#,TForm>> with `Overlay = True` and overrides `SetBounds` so it stays anchored to its edge when the terminal is resized.
+
+Up to four peek panels can coexist (one per edge), managed by <<application.adoc#,TApplication>>'s peek API.
+
+== TPeekSide
+
+[source,pascal]
+----
+TPeekSide = (psLeft, psRight, psTop, psBottom);
+----
+
+== TPeekForm
+
+[source,pascal]
+----
+TPeekForm = class(TForm)
+  constructor Create(ASide: TPeekSide; APeekSize: Integer;
+    const ATitle: string = '');
+
+  procedure SetBounds(ALeft, ATop, AWidth, AHeight: Integer); override;
+
+  function ContentLeft:   Integer;
+  function ContentTop:    Integer;
+  function ContentWidth:  Integer;
+  function ContentHeight: Integer;
+
+  property Side:     TPeekSide;
+  property PeekSize: Integer;     // columns (left/right) or rows (top/bottom)
+end;
+----
+
+=== Bounds
+
+`SetBounds` ignores its parameters and calls `UpdateBounds` instead.
+`UpdateBounds` positions the panel from `Term.Width`/`Term.Height` and the stored `Side`/`PeekSize`.
+
+[cols="1,3"]
+|===
+| Side | Position
+
+| `psLeft`
+| Columns 1 .. PeekSize, full height
+
+| `psRight`
+| Columns (W-PeekSize+1) .. W, full height
+
+| `psTop`
+| Rows 1 .. PeekSize, full width
+
+| `psBottom`
+| Rows (H-PeekSize+1) .. H, full width
+|===
+
+=== Content area
+
+Child controls should be positioned inside the content area, not the outer bounds:
+
+[cols="1,1"]
+|===
+| Property | Value
+
+| `ContentLeft`
+| `Left + 1` (inside left border)
+
+| `ContentTop`
+| `Top + 2` (below title row and top border)
+
+| `ContentWidth`
+| `Width - 2`
+
+| `ContentHeight`
+| `Height - 3`
+|===
+
+=== Painting
+
+`DoPaint` fills the background in `clBlue`, draws an ASCII box border (`+`, `-`, `|`), and renders the title centered in the top border row, truncated with `~` if necessary.
+
+== Usage
+
+[source,pascal]
+----
+FHelpPanel := TPeekForm.Create(psRight, 40, 'Help');
+// add child controls using ContentLeft/ContentTop/ContentWidth/ContentHeight
+
+// toggle on F1 (or from OnHelp handler):
+Application.TogglePeek(FHelpPanel);
+----
+
+== See also
+
+* <<forms.adoc#,TermUI.Forms>> — TForm base
+* <<application.adoc#,TermUI.Application>> — ShowPeek / HidePeek / TogglePeek
+* <<control.adoc#,TermUI.Control>> — help propagation chain

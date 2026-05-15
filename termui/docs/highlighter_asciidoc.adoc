@@ -1,0 +1,124 @@
+= TermUI.Highlighter.AsciiDoc
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TAsciiDocHighlighter` implements <<editor.adoc#TTextHighlighter,TTextHighlighter>> to provide AsciiDoc syntax highlighting for <<editor.adoc#,TTextEditor>>.
+
+`Prepare` does a single full-document pass to classify every line (handling multi-line code blocks and tables).
+`GetSpans` returns color spans for one line in O(1) using the pre-computed classification.
+
+== Color scheme
+
+[cols="1,2,1"]
+|===
+| Element | Color | Notes
+
+| `= H1`
+| `clBrightCyan`
+|
+
+| `== H2`
+| `clBrightYellow` + underline
+|
+
+| `=== H3`
+| `clBrightGreen`
+|
+
+| `==== H4`
+| `clGreen`
+|
+
+| Code block body
+| `clBrightBlack`
+| Between `----` fences
+
+| Code fence / rule / comment / attribute / table
+| `clBrightBlack`
+|
+
+| Bullet marker (`* ` / `- ` / `. `)
+| `clBrightYellow`
+| First 2 chars only; rest gets inline markup
+
+| Inline `*bold*`
+| `clBrightWhite`
+|
+
+| Inline `_italic_`
+| underline
+|
+
+| Inline `` `mono` `` / `+mono+`
+| `clCyan`
+|
+
+| Inline marker chars (`*`, `_`, `` ` ``, `+`)
+| `clBrightBlack`
+| The delimiter characters themselves
+|===
+
+== Line classification
+
+`Prepare` assigns one `TLineKind` per line:
+
+[cols="1,3"]
+|===
+| Kind | Trigger
+
+| `lkBlank`
+| `Trim(S) = ''`
+
+| `lkH1`..`lkH4`
+| 1–4 leading `=` chars followed by a space
+
+| `lkPara`
+| Any other non-blank line
+
+| `lkBullet`
+| Line starts with `* `, `- `, or `. `
+
+| `lkCode`
+| Inside a `----` fence
+
+| `lkCodeFence`
+| The `----` line itself
+
+| `lkRule`
+| Three or more `-` chars, nothing else
+
+| `lkComment`
+| Starts with `//`
+
+| `lkAttribute`
+| Starts with `[`
+
+| `lkTable`
+| Inside or on a `\|===` fence
+|===
+
+Multi-line state (`InCode`, `InTable`) is tracked across the linear pass so `GetSpans` never needs to rescan.
+
+== Inline markup
+
+`AddInlineSpans` scans paragraphs and bullet text character by character, toggling `InBold`, `InItal`, `InMono` on `*`, `_`, `` ` ``, `+` delimiters.
+
+Inline markup does not nest; the last-opened markup wins.
+
+== Usage
+
+[source,pascal]
+----
+FHighlighter := TAsciiDocHighlighter.Create;
+
+Editor := TTextEditor.Create;
+Editor.Highlighter := FHighlighter;   // not owned by editor
+Editor.Lines.LoadFromFile('readme.adoc');
+----
+
+== See also
+
+* <<editor.adoc#,TermUI.Control.Editor>> — TTextEditor, TTextHighlighter, TTextSpan

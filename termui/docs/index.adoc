@@ -1,0 +1,90 @@
+= TermUI Component Reference
+:toc: left
+:toclevels: 2
+
+A terminal UI library written in Free Pascal (Object Pascal, `{$mode objfpc}{$H+}`).
+
+== Architecture overview
+
+All visible elements inherit from <<control.adoc#,TControl>>.
+The <<application.adoc#,TApplication>> singleton owns a stack of <<forms.adoc#,TForm>> instances and runs the event loop.
+Containers implement <<control.adoc#IContainer,IContainer>> (CORBA, no ref-counting) to arrange children automatically when bounds change.
+
+== Units
+
+=== Core
+
+[cols="1,3"]
+|===
+| Unit | Description
+
+| <<control.adoc#,TermUI.Control>>
+| Base class `TControl`, `IContainer` interface, `THelpEvent`
+
+| <<forms.adoc#,TermUI.Forms>>
+| `TForm` — full-screen container, form stack, modal results
+
+| <<application.adoc#,TermUI.Application>>
+| `TApplication` — event loop, form stack, peek management
+|===
+
+=== Layout containers
+
+[cols="1,3"]
+|===
+| Unit | Description
+
+| <<container.adoc#,TermUI.Control.Container>>
+| `TContainerControl` (single child) and `TMultiContainerControl` (abstract multi-child)
+
+| <<vbox.adoc#,TermUI.Control.VBox>>
+| `TVBox` — stacks children vertically
+
+| <<hbox.adoc#,TermUI.Control.HBox>>
+| `THBox` — arranges children horizontally
+
+| <<tabcontainer.adoc#,TermUI.Control.TabContainer>>
+| `TTabContainer` — tabbed pages with a tab bar
+|===
+
+=== Leaf controls
+
+[cols="1,3"]
+|===
+| Unit | Description
+
+| <<label.adoc#,TermUI.Control.Label>>
+| `TLabel` — static text with alignment and word wrap
+
+| <<lineeditor.adoc#,TermUI.Control.LineEditor>>
+| `TTextEdit` — single-line text input
+
+| <<editor.adoc#,TermUI.Control.Editor>>
+| `TTextEditor` — multi-line editor with pluggable syntax highlighting
+|===
+
+=== Forms / overlays
+
+[cols="1,3"]
+|===
+| Unit | Description
+
+| <<peek.adoc#,TermUI.Form.Peek>>
+| `TPeekForm` — edge-anchored overlay panel
+
+| <<filedialog.adoc#,TermUI.Form.FileDialog>>
+| `TFileDialog` — full-filesystem open/save/dir dialog
+|===
+
+=== Utilities
+
+[cols="1,3"]
+|===
+| Unit | Description
+
+| <<timer.adoc#,TermUI.Timer>>
+| `TTimer` — interval timer on a background thread
+
+| <<highlighter_asciidoc.adoc#,TermUI.Highlighter.AsciiDoc>>
+| `TAsciiDocHighlighter` — AsciiDoc syntax highlighter for `TTextEditor`
+|===

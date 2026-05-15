@@ -1,0 +1,71 @@
+= TermUI.Control.TabContainer
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TTabContainer` shows one child at a time, with a tab bar on the top row.
+Only the active tab's child is visible; the others have `Visible = False`.
+
+== TTabContainer
+
+Extends <<container.adoc#TMultiContainerControl,TMultiContainerControl>>.
+
+[source,pascal]
+----
+TTabContainer = class(TMultiContainerControl)
+  procedure AddTab(const ALabel: string; AControl: TControl);
+  procedure AddChild(AControl: TControl);   // IContainer — empty label
+
+  property ActiveTab:    Integer;           // read/write; fires OnTabChanged
+  property OnTabChanged: TNotifyEvent;
+end;
+----
+
+=== Tab bar
+
+----
+[Active Tab]  Inactive  Another
+----
+
+* Active tab is bracketed and highlighted (`clBrightWhite` on `clBlue`).
+* Inactive tabs are dimmed (`clBrightBlack`).
+* Labels are truncated with `~` if the bar runs out of space.
+
+=== Key bindings
+
+[cols="1,3"]
+|===
+| Key | Action
+
+| `Shift+Left`
+| Previous tab
+
+| `Shift+Right`
+| Next tab
+|===
+
+Other keys are forwarded to the active child.
+
+=== Layout
+
+`ArrangeChildren` gives each child the full bounds minus the top tab-bar row
+(`Top+1`, `Height-1`).
+
+=== Example
+
+[source,pascal]
+----
+Tabs := TTabContainer.Create;
+Tabs.AddTab('Editor',  EditorControl);
+Tabs.AddTab('Log',     LogControl);
+Tabs.AddTab('Options', OptionsControl);
+Tabs.ActiveTab := 0;
+----
+
+== See also
+
+* <<container.adoc#,TermUI.Control.Container>> — TMultiContainerControl base
+* <<vbox.adoc#,TermUI.Control.VBox>> — vertical layout
+* <<hbox.adoc#,TermUI.Control.HBox>> — horizontal layout

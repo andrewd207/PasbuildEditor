@@ -1,0 +1,69 @@
+= TermUI.Control.Label
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TLabel` renders static text in a bounded area with optional word wrap, alignment, and custom foreground/background colors.
+
+== TLabel
+
+Extends <<control.adoc#,TControl>>.
+
+[source,pascal]
+----
+TLabel = class(TControl)
+  constructor Create;
+  procedure ResetColors;
+
+  property Text:       string;
+  property Align:      TLabelAlign;   // laLeft (default), laCenter, laRight
+  property WordWrap:   Boolean;
+  property ForeColor:  TColor;        // clDefault = terminal default
+  property BackColor:  TColor;
+end;
+----
+
+== TLabelAlign
+
+[source,pascal]
+----
+TLabelAlign = (laLeft, laCenter, laRight);
+----
+
+Each display row is padded or indented independently to fill `Width`.
+
+== Text and wrapping
+
+`Text` may contain `#10` line breaks for explicit multi-line content.
+
+When `WordWrap = True` the text is reflowed to fit `Width` automatically.
+Words that individually exceed `Width` are hard-truncated with `~`.
+
+`DoBoundsChanged` calls `RebuildLines` so wrapping is always recalculated after a container resize.
+
+Lines that still exceed `Width` after wrapping (only possible without word wrap) are truncated with `~`.
+
+== Colors
+
+`ForeColor` and `BackColor` default to `clDefault` (terminal default).
+Setting either to anything other than `clDefault` activates it; `ResetColors` reverts both to `clDefault`.
+
+== Example
+
+[source,pascal]
+----
+Lbl := TLabel.Create;
+Lbl.SetBounds(1, 1, 40, 3);
+Lbl.Text      := 'Hello from TermUI';
+Lbl.Align     := laCenter;
+Lbl.WordWrap  := True;
+Lbl.ForeColor := clBrightYellow;
+----
+
+== See also
+
+* <<control.adoc#,TermUI.Control>> — TControl base
+* <<lineeditor.adoc#,TermUI.Control.LineEditor>> — single-line text input
+* <<editor.adoc#,TermUI.Control.Editor>> — multi-line text editor

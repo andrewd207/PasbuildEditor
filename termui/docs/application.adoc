@@ -1,0 +1,97 @@
+= TermUI.Application
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TermUI.Application` provides `TApplication`, the singleton that owns the form stack, runs the event loop, and coordinates repainting.
+
+The global instance is `Application` (declared in the unit).
+
+== TApplication
+
+[source,pascal]
+----
+TApplication = class
+  procedure Run;
+  procedure ProcessMessages;
+  procedure Terminate;
+  procedure Resume;
+
+  procedure PushForm(AForm: TForm);
+  procedure PopForm;
+  function  ShowModal(AForm: TForm): Integer;
+
+  { Peek management }
+  procedure ShowPeek(AForm: TForm);
+  procedure HidePeek(AForm: TForm);
+  procedure TogglePeek(AForm: TForm);
+  function  PeekVisible(AForm: TForm): Boolean;
+
+  property Terminated: Boolean;
+  property ActiveForm: TForm;
+  property OnKeyDown:  TKeyDownEvent;
+  property OnIdle:     TNotifyEvent;
+  property HelpKey:    TKeyCode;        // default kcF1; kcNone to disable
+end;
+----
+
+== Event loop
+
+`Run` calls `ProcessMessages` in a tight loop until `Terminated` is True.
+
+Each `ProcessMessages` cycle:
+
+. Calls `CheckSynchronize` (delivers <<timer.adoc#,TTimer>> and other `Synchronize` callbacks).
+. Reads a key (16 ms timeout — non-blocking if no input).
+. Dispatches the key or fires `OnIdle`.
+. Repaints if anything was invalidated.
+. Auto-pops any overlay form whose `ModalResult <> 0`.
+
+== Form stack
+
+The stack is a dynamic array; index `N-1` is the active form.
+
+`PushForm` adds a form to the top.
+`PopForm` removes the top form.
+`ShowModal` is equivalent to `PushForm` + spin `ProcessMessages` + `PopForm`, returning `ModalResult`.
+
+=== Repainting with overlays
+
+`RepaintActive` walks down the stack from the top until it finds the first non-overlay form, then paints all forms from there upward into the back buffer before a single `FlushOutput`.
+This makes multiple simultaneous <<peek.adoc#,peek panels>> work without flicker.
+
+== Help key [[HelpKey]]
+
+When a key matching `HelpKey` (default `kcF1`) arrives and is not consumed by the active form's `DoKeyDown`, the application calls `ActiveForm.Help`, which propagates through the focused control chain.
+
+Set `HelpKey := kcNone` to disable entirely.
+
+== Peek management
+
+Any <<forms.adoc#TForm,TForm>> with `Overlay = True` can be used as a peek.
+Typically you use <<peek.adoc#,TPeekForm>> which sets `Overlay` automatically.
+
+[source,pascal]
+----
+FHelp := TPeekForm.Create(psRight, 40, 'Help');
+// show/hide on demand:
+Application.TogglePeek(FHelp);
+----
+
+`ShowPeek` pushes if not already visible.
+`HidePeek` removes from anywhere in the stack.
+`TogglePeek` does one or the other.
+
+== Resize handling
+
+When the terminal is resized, `HandleResize` calls `SetBounds(1, 1, Term.Width, Term.Height)` on *every* form in the stack (not just the active one), triggering the full <<control.adoc#,DoBoundsChanged cascade>>.
+<<peek.adoc#,TPeekForm>> overrides `SetBounds` to recalculate from its side and peek-size rather than accepting the full-screen bounds.
+
+== See also
+
+* <<forms.adoc#,TermUI.Forms>> — TForm
+* <<control.adoc#,TermUI.Control>> — TControl, IContainer
+* <<peek.adoc#,TermUI.Form.Peek>> — TPeekForm
+* <<timer.adoc#,TermUI.Timer>> — TTimer (uses CheckSynchronize delivery)

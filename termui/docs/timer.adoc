@@ -1,0 +1,60 @@
+= TermUI.Timer
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TTimer` fires `OnTimer` on the main thread at a configurable interval using a background thread and an `RTLEvent` for interruptible sleeping.
+
+== TTimer
+
+[source,pascal]
+----
+TTimer = class
+  constructor Create;   // Interval=1000, Enabled=False
+  destructor  Destroy;
+
+  property Interval: Cardinal;      // milliseconds; default 1000
+  property Enabled:  Boolean;
+  property OnTimer:  TNotifyEvent;
+end;
+----
+
+== Threading model
+
+A `TTimerThread` (internal, `FreeOnTerminate = False`) loops:
+
+. `RTLEventWaitFor(FEvent, Interval)` — sleeps up to `Interval` ms.
+. `RTLEventResetEvent(FEvent)` — clear the signal.
+. If not `Terminated` and `Enabled`: `Synchronize(FireTimer)`.
+
+`FireTimer` calls `FOnTimer(Owner)` on the main thread.
+
+<<application.adoc#,TApplication.ProcessMessages>> calls `CheckSynchronize` every cycle so the callback is delivered promptly.
+
+=== Interruption
+
+Setting `Enabled := False` or calling `Destroy` signals `FEvent` immediately via `RTLEventSetEvent`, so the thread wakes up and either skips the callback or terminates without waiting out the current interval.
+
+`Destroy` calls `Thread.Terminate`, signals the event, `Thread.WaitFor`, then `RTLEventDestroy` — safe even if the thread is mid-sleep.
+
+=== Changing Interval while running
+
+`SetInterval` updates `FInterval` and signals the event if `Enabled = True`, causing the thread to restart its wait with the new interval immediately.
+
+== Example
+
+[source,pascal]
+----
+FTimer := TTimer.Create;
+FTimer.Interval := 500;
+FTimer.OnTimer  := @OnTick;
+FTimer.Enabled  := True;
+// ...
+FTimer.Free;  // stops thread cleanly
+----
+
+== See also
+
+* <<application.adoc#,TermUI.Application>> — CheckSynchronize delivery

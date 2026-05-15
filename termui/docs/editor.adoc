@@ -1,0 +1,126 @@
+= TermUI.Control.Editor
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TTextEditor` is a multi-line text editor with pluggable syntax highlighting.
+In read-only mode the control scrolls without allowing edits.
+
+Syntax highlighting is provided by subclassing `TTextHighlighter` and assigning an instance to `TTextEditor.Highlighter`.
+
+== TTextHighlighter
+
+[source,pascal]
+----
+TTextHighlighter = class
+  procedure Prepare(ALines: TStrings); virtual;
+  procedure GetSpans(ARow: Integer; const ALine: string;
+    out ASpans: TTextSpanArray); virtual;
+end;
+----
+
+`Prepare` is called once before the paint pass with the full document.
+Use it for multi-line state (code fences, block comments, tables).
+
+`GetSpans` is called per visible row.
+Return an array of `TTextSpan` records that will be applied over the plain text.
+
+=== TTextSpan
+
+[source,pascal]
+----
+TTextSpan = record
+  Col:       Integer;   // 0-based byte offset into the line
+  Len:       Integer;   // byte length of the span
+  FG:        TColor;
+  BG:        TColor;
+  Underline: Boolean;
+end;
+----
+
+Spans may overlap; later spans in the array take precedence character by character.
+
+== TTextEditor
+
+Extends <<control.adoc#,TControl>>.
+
+[source,pascal]
+----
+TTextEditor = class(TControl)
+  property Lines:       TStrings;          // content; caller may populate directly
+  property ReadOnly:    Boolean;
+  property WordWrap:    Boolean;           // suppresses horizontal scroll
+  property Highlighter: TTextHighlighter;  // not owned by the editor
+  property CursorRow:   Integer;           // 1-based
+  property CursorCol:   Integer;           // 1-based
+  property OnChange:    TNotifyEvent;
+end;
+----
+
+=== Read-only key bindings
+
+[cols="1,3"]
+|===
+| Key | Action
+
+| `Up` / `Down`
+| Scroll one row
+
+| `PgUp` / `PgDn`
+| Scroll one page
+
+| `Ctrl+Home`
+| Jump to first line
+
+| `Ctrl+End`
+| Jump to last line
+|===
+
+=== Edit key bindings (ReadOnly = False)
+
+All read-only bindings plus:
+
+[cols="1,3"]
+|===
+| Key | Action
+
+| `Left` / `Right`
+| Move cursor one character
+
+| `Home` / `End`
+| Start / end of current line
+
+| `Ctrl+Home` / `Ctrl+End`
+| First / last line
+
+| `Backspace` / `Delete`
+| Delete character
+
+| `Enter`
+| Insert new line
+
+| `Ctrl+K`
+| Kill to end of line
+
+| Printable char
+| Insert at cursor
+|===
+
+=== Syntax highlighting
+
+[source,pascal]
+----
+Editor := TTextEditor.Create;
+Editor.Highlighter := TAsciiDocHighlighter.Create;
+// The editor does NOT free the highlighter.
+----
+
+See <<highlighter_asciidoc.adoc#,TAsciiDocHighlighter>> for a ready-to-use example.
+
+== See also
+
+* <<highlighter_asciidoc.adoc#,TermUI.Highlighter.AsciiDoc>> — AsciiDoc highlighter
+* <<lineeditor.adoc#,TermUI.Control.LineEditor>> — single-line input
+* <<label.adoc#,TermUI.Control.Label>> — static text display

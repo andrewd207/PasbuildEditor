@@ -1,0 +1,88 @@
+= TermUI.Control.LineEditor
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TTextEdit` is a single-line text input field.
+The control scrolls horizontally when the text exceeds the visible width.
+
+== TTextEdit
+
+Extends <<control.adoc#,TControl>>.
+
+[source,pascal]
+----
+TTextEdit = class(TControl)
+  constructor Create;
+  procedure Clear;
+
+  property Text:         string;
+  property CursorPos:    Integer;     // 1-based, read-only
+  property PasswordChar: Char;        // #0 = plain text; set to e.g. '*' for passwords
+  property Placeholder:  string;      // shown in clBrightBlack when Text is empty
+  property OnChange:     TNotifyEvent;
+  property OnAccept:     TNotifyEvent;  // fired on Enter
+  property OnCancel:     TNotifyEvent;  // fired on Escape
+end;
+----
+
+== Key bindings
+
+[cols="1,3"]
+|===
+| Key | Action
+
+| `Left` / `Right`
+| Move cursor one character
+
+| `Home` / `End`
+| Jump to start / end of text
+
+| `Ctrl+Left` / `Ctrl+Right`
+| Jump one word left / right
+
+| `Backspace`
+| Delete character before cursor
+
+| `Delete`
+| Delete character at cursor
+
+| `Ctrl+K`
+| Kill from cursor to end of line
+
+| `Ctrl+U`
+| Kill from start of line to cursor
+
+| `Enter`
+| Fire `OnAccept`
+
+| `Escape`
+| Fire `OnCancel`
+
+| Printable char
+| Insert at cursor
+|===
+
+== Scrolling
+
+`FCur` is the 1-based cursor position in the internal buffer.
+`FScroll` is the number of bytes scrolled off the left edge.
+`ClampScroll` keeps `FCur - FScroll` within `[1, Width]`.
+
+== Example
+
+[source,pascal]
+----
+Edit := TTextEdit.Create;
+Edit.SetBounds(10, 5, 30, 1);
+Edit.Placeholder := 'Search...';
+Edit.OnAccept    := @DoSearch;
+----
+
+== See also
+
+* <<label.adoc#,TermUI.Control.Label>> — static text
+* <<editor.adoc#,TermUI.Control.Editor>> — multi-line text editor
+* <<filedialog.adoc#,TermUI.Form.FileDialog>> — uses TTextEdit for the filename field

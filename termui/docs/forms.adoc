@@ -1,0 +1,76 @@
+= TermUI.Forms
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TermUI.Forms` provides `TForm` — the root container for a screen of controls.
+Forms live on <<application.adoc#,TApplication>>'s form stack; the top of the stack is the active form.
+
+== TForm
+
+Inherits from <<control.adoc#,TControl>> and implements <<control.adoc#IContainer,IContainer>>.
+
+[source,pascal]
+----
+TForm = class(TControl, IContainer)
+  constructor Create(const ATitle: string = '');
+
+  { IContainer }
+  procedure AddChild(AControl: TControl);   // takes ownership
+  function  ChildCount: Integer;
+  function  GetChild(AIndex: Integer): TControl;
+
+  procedure FocusNext;
+  procedure FocusPrev;
+  function  FocusedControl: TControl;
+
+  procedure Invalidate; override;           // cascades to all children
+  procedure Close(AModalResult: Integer = 1);
+  procedure CloseCancel;                    // sets ModalResult = -1
+
+  property Title:       string;
+  property ModalResult: Integer;
+  property Overlay:     Boolean;
+  property OnActivate:  TNotifyEvent;
+  property OnDeactivate: TNotifyEvent;
+end;
+----
+
+=== Layout
+
+`TForm.DoBoundsChanged` calls `ArrangeChildren` (virtual, base is a no-op).
+Override `ArrangeChildren` to compute and push bounds to children rather than setting them manually.
+
+For automatic layout use a <<container.adoc#,layout container>> as the single child of the form and let it handle sub-layout.
+
+=== Focus
+
+Tab cycles through children in add-order, skipping non-visible and non-enabled controls.
+`FocusedControl` returns the currently focused child, or `nil`.
+
+Key events go first to the focused child; if nothing consumes the key, the form's own `OnKeyDown` fires.
+
+=== Modal usage
+
+[source,pascal]
+----
+Result := Application.ShowModal(MyForm);
+// ShowModal spins ProcessMessages until Close is called.
+// Result is the ModalResult value passed to Close.
+----
+
+=== Overlays
+
+Setting `Overlay := True` causes <<application.adoc#,TApplication.RepaintActive>> to paint the form underneath before this one, so the overlay appears on top of live content.
+Up to four overlays can coexist (e.g. four peek panels).
+
+For edge-anchored overlays see <<peek.adoc#,TPeekForm>>.
+
+== See also
+
+* <<control.adoc#,TermUI.Control>> — TControl base
+* <<application.adoc#,TermUI.Application>> — form stack management
+* <<peek.adoc#,TermUI.Form.Peek>> — overlay peek panel
+* <<container.adoc#,TermUI.Control.Container>> — layout containers

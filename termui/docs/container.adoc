@@ -1,0 +1,95 @@
+= TermUI.Control.Container
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TermUI.Control.Container` provides two abstract base classes for controls that own and arrange children:
+
+* `TContainerControl` — single child.
+* `TMultiContainerControl` — two or more children with a layout strategy.
+
+Both implement <<control.adoc#IContainer,IContainer>> (CORBA) and cascade bounds changes automatically.
+
+Concrete layout subclasses: <<vbox.adoc#,TVBox>>, <<hbox.adoc#,THBox>>, <<tabcontainer.adoc#,TTabContainer>>.
+
+== TLayoutHint [[TLayoutHint]]
+
+[source,pascal]
+----
+TLayoutHint = (lhFixed, lhStretch);
+----
+
+[cols="1,3"]
+|===
+| Value | Meaning
+
+| `lhFixed`
+| Child occupies exactly `FixedSize` columns (HBox) or rows (VBox).
+
+| `lhStretch`
+| Child shares whatever space remains after fixed children are allocated.
+  Multiple stretch children divide the remainder equally, with any leftover rows/columns distributed one-by-one from the first stretch child.
+|===
+
+== TContainerControl [[TContainerControl]]
+
+Single-child container.
+
+[source,pascal]
+----
+TContainerControl = class(TControl, IContainer)
+  procedure AddChild(AControl: TControl);   // takes ownership; replaces existing child
+  function  ChildCount: Integer;            // 0 or 1
+  function  GetChild(AIndex: Integer): TControl;
+  procedure Invalidate; override;           // cascades to child
+
+  property Child: TControl;
+end;
+----
+
+`DoBoundsChanged` calls `ArrangeChildren` (virtual).
+The base `ArrangeChildren` gives the child the full container bounds.
+Override to reserve rows/columns for a border or header.
+
+== TMultiContainerControl [[TMultiContainerControl]]
+
+Abstract base for multi-child layouts.
+
+[source,pascal]
+----
+TMultiContainerControl = class(TControl, IContainer)
+  procedure AddChild(AControl: TControl);               // stretch child
+  procedure AddFixedChild(AControl: TControl; AFixedSize: Integer);
+  function  ChildCount: Integer;
+  function  GetChild(AIndex: Integer): TControl;
+
+  procedure FocusNext;
+  procedure FocusPrev;
+  function  FocusedChild: TControl;
+
+  procedure Invalidate; override;  // cascades to all children
+end;
+----
+
+Protected fields available to subclasses:
+
+[source,pascal]
+----
+FChildren:   array of TChildEntry;   // parallel entries (Control, Hint, FixedSize)
+FChildCount: Integer;
+FFocusIndex: Integer;                // index of the focused child
+----
+
+`ArrangeChildren` is declared `abstract` — subclasses *must* override it.
+
+Key events go to the focused child.
+Help requests try the focused child first.
+
+== See also
+
+* <<vbox.adoc#,TermUI.Control.VBox>> — vertical layout
+* <<hbox.adoc#,TermUI.Control.HBox>> — horizontal layout
+* <<tabcontainer.adoc#,TermUI.Control.TabContainer>> — tabbed pages
+* <<control.adoc#,TermUI.Control>> — TControl, IContainer
