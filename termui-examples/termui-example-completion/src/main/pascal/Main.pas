@@ -564,6 +564,14 @@ begin
     Exit;
   end;
 
+  { Ctrl+Space: force-open popup regardless of prefix length }
+  if Key.Code = kcCtrlSpace then
+  begin
+    FPopup.TriggerFromEditor(FEdit, True);
+    Invalidate;
+    Exit;
+  end;
+
   { Space when popup is visible: commit then insert space }
   if (Key.Code = kcChar) and (Key.Ch = ' ') and FPopup.Visible then
   begin

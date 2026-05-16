@@ -293,7 +293,8 @@ begin
           #24: Result.Code := kcCtrlX;
           #25: Result.Code := kcCtrlY;
           #26: Result.Code := kcCtrlZ;
-          #0: ;  { modifier-only keydown with no character — ignore }
+          #0: if Ctrl then Result.Code := kcCtrlSpace;  { Ctrl+Space }
+          { else: modifier-only keydown with no character — ignore }
           else begin
             if Alt and (KE.AsciiChar >= ' ') and (KE.AsciiChar <> #127) then
             begin

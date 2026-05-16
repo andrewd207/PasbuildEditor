@@ -90,9 +90,9 @@ unit TermUI.Completion;
 interface
 
 uses
-  Classes, SysUtils, Contnrs,
+  Classes, SysUtils, Math, Contnrs,
   TermUI.Terminal, TermUI.Application, TermUI.StringUtils,
-  TermUI.Control.LineEditor;
+  TermUI.Control.LineEditor, TermUI.Control.Editor;
 
 type
   TCompletionKind = (
@@ -210,12 +210,26 @@ type
     FSuppressed:      Boolean;
     FSuppressedPos:   Integer;  { CursorPos when suppression started }
 
+    { The word start (0-based) and row recorded when the popup first became
+      visible.  If the cursor retreats before this position, or moves to a
+      different row, the popup is hidden. }
+    FTriggerWordStart: Integer;
+    FTriggerRow:       Integer;
+
+
     function  VisibleCount: Integer;
     procedure Clamp;
     function  GetSelected: TCompletionItem;
     procedure DoCommit(AEditor: TTextEdit; AMode: TCommitMode;
                        const AExtraChar: TUTF8Char);
+    procedure DoCommitMulti(AEditor: TTextEditor; AMode: TCommitMode;
+                            const AExtraChar: TUTF8Char);
+    { Compute popup position from the editor's left/top edges (single-line editor).
+      The cursor's screen column is approximated as AEditorLeft + FContext.CursorPos. }
     procedure CalcLayout(AEditorLeft, AEditorTop: Integer);
+    { Compute popup position from the cursor's absolute screen column and row.
+      Used when the caller already knows the exact cursor screen position. }
+    procedure CalcLayoutAt(ACursorX, ACursorY: Integer);
 
     function  KindGlyph(AKind: TCompletionKind): string;
     function  KindColor(AKind: TCompletionKind): TColor;
@@ -226,8 +240,14 @@ type
 
     { Call from the editor's OnChange handler. Queries the data source and
       shows / hides / repositions the popup. AEditor is used to compute
-      the context and the screen position of the cursor. }
-    procedure TriggerFromEditor(AEditor: TTextEdit);
+      the context and the screen position of the cursor.
+      Pass AForce=True (e.g. from Ctrl+Space) to bypass ShouldTrigger and
+      show all items even with an empty prefix. }
+    procedure TriggerFromEditor(AEditor: TTextEdit; AForce: Boolean = False);
+
+    { Variant for the multi-line TTextEditor. Builds context from the current
+      line at CursorCol. AEditor supplies cursor screen coords for anchoring. }
+    procedure TriggerFromMultiEditor(AEditor: TTextEditor; AForce: Boolean = False);
 
     { Call from the host form's DoKeyDown when the popup is visible.
       Navigation keys (Up/Down/PgUp/PgDn/Escape) are consumed by the popup.
@@ -236,18 +256,25 @@ type
 
     { Commit the selected item into the editor.
       Returns True if there was a selection to commit. }
-    function  CommitInto(AEditor: TTextEdit; AMode: TCommitMode): Boolean;
+    function  CommitInto(AEditor: TTextEdit; AMode: TCommitMode): Boolean; overload;
+    function  CommitInto(AEditor: TTextEditor; AMode: TCommitMode): Boolean; overload;
 
     { Call when the user types a char that may be a commit char.
       If the char is in DataSource.CommitChars AND an item is selected,
       commits the selection and returns True (the char still goes to the editor).
       Otherwise returns False and the caller should let the char through normally. }
-    function  CommitOnChar(AEditor: TTextEdit; const Ch: TUTF8Char): Boolean;
+    function  CommitOnChar(AEditor: TTextEdit; const Ch: TUTF8Char): Boolean; overload;
+    function  CommitOnChar(AEditor: TTextEditor; const Ch: TUTF8Char): Boolean; overload;
 
     { Paint the popup. Call AFTER all other painting in the host's DoPaint. }
     procedure Paint;
 
     procedure Hide;
+
+    { Returns True if ACh is a word character under the current data source's
+      WordChars setting — i.e. typing it should keep the popup open and
+      refine the suggestion list. Returns False for punctuation, spaces, etc. }
+    function IsWordChar(const ACh: TUTF8Char): Boolean;
 
     property Visible:    Boolean             read FVisible;
     property DataSource: TCompletionDataSource read FDataSource write FDataSource;
@@ -402,8 +429,7 @@ begin
         if Start >= 0 then
         begin
           Word := Line.Copy(Start, J - Start);
-          if AWords.IndexOf(Word) < 0 then
-            AWords.Add(Word);
+          AWords.Add(Word);
           Start := -1;
         end;
       end;
@@ -411,8 +437,7 @@ begin
     if Start >= 0 then
     begin
       Word := Line.Copy(Start, Len - Start);
-      if AWords.IndexOf(Word) < 0 then
-        AWords.Add(Word);
+      AWords.Add(Word);
     end;
   end;
 end;
@@ -420,16 +445,18 @@ end;
 procedure TWordListDataSource.GetCompletions(const ACtx: TCompletionContext;
   AList: TCompletionList);
 var
-  AllWords:  TStringList;
-  Scored:    TStringList;  { 'score:word' for sorting }
-  I:         Integer;
-  Word:      string;
-  Prefix:    string;
-  PrefixLo:  string;
-  WordLo:    string;
-  Score:     Integer;
-  Entry:     string;
-  ColonPos:  Integer;
+  AllWords:   TStringList;
+  Scored:     TStringList;  { 'score:word' for sorting }
+  Seen:       TStringList;
+  I:          Integer;
+  Word:       string;
+  Prefix:     string;
+  PrefixLo:   string;
+  WordLo:     string;
+  Score:      Integer;
+  Entry:      string;
+  ColonPos:   Integer;
+  ExactCount: Integer;
 begin
   if not Assigned(FSource) then Exit;
   Prefix   := ACtx.Prefix;
@@ -437,20 +464,27 @@ begin
 
   AllWords := TStringList.Create;
   Scored   := TStringList.Create;
+  Seen     := TStringList.Create;
   try
     Tokenize(FSource, AllWords);
+    ExactCount := 0;
+    for I := 0 to AllWords.Count - 1 do
+      if LowerCase(AllWords[I]) = PrefixLo then Inc(ExactCount);
     for I := 0 to AllWords.Count - 1 do
     begin
       Word   := AllWords[I];
       WordLo := LowerCase(Word);
 
-      if Word = Prefix then Continue;   { exact match — already typed it }
+      { Skip the trigger word when it only appears once (the instance being typed) }
+      if (WordLo = PrefixLo) and (ExactCount <= 1) then Continue;
 
       Score := -1;
       if WordLo.Pos(PrefixLo) = 0 then
       begin
         { Prefix match }
-        if Word.Copy(0, Prefix.Length) = Prefix then
+        if Word = Prefix then
+          Score := 3   { exact case }
+        else if Word.Copy(0, Prefix.Length) = Prefix then
           Score := 2   { exact case prefix }
         else
           Score := 1;  { case-insensitive prefix }
@@ -469,9 +503,14 @@ begin
       Entry    := Scored[I];
       ColonPos := Entry.Pos(TUTF8Char(':'));   { 0-based char pos of ':' in score prefix }
       Word     := Entry.Copy(ColonPos + 1, Entry.Length - ColonPos - 1);
-      AList.Add(Word, ckText);
+      if Seen.IndexOf(LowerCase(Word)) < 0 then
+      begin
+        Seen.Add(LowerCase(Word));
+        AList.Add(Word, ckText);
+      end;
     end;
   finally
+    Seen.Free;
     Scored.Free;
     AllWords.Free;
   end;
@@ -554,68 +593,84 @@ begin
   end;
 end;
 
-procedure TCompletionPopup.CalcLayout(AEditorLeft, AEditorTop: Integer);
+procedure TCompletionPopup.CalcLayoutAt(ACursorX, ACursorY: Integer);
 var
-  CursorScreenX: Integer;
-  I:             Integer;
-  MaxW:          Integer;
-  ItemW:         Integer;
-  TermW:         Integer;
-  TermH:         Integer;
-  PopupH:        Integer;
+  I:      Integer;
+  MaxW:   Integer;
+  ItemW:  Integer;
+  TermW:  Integer;
+  TermH:  Integer;
+  PopupH: Integer;
 begin
   TermW := Term.Width;
   TermH := Term.Height;
 
-  { Cursor screen column = editor left + (CursorPos - FScroll).
-    CursorPos is 0-based; we approximate without the scroll offset — the
-    anchor is clamped to the terminal width regardless. }
-  CursorScreenX := AEditorLeft + FContext.CursorPos;
-  if CursorScreenX < 1     then CursorScreenX := 1;
-  if CursorScreenX > TermW then CursorScreenX := TermW;
+  if ACursorX < 1     then ACursorX := 1;
+  if ACursorX > TermW then ACursorX := TermW;
 
   { Measure required width: glyph (2) + space + text + space + detail }
   MaxW := 20;
   for I := 0 to FItems.Count - 1 do
   begin
-    ItemW := 4 + Length(FItems[I].DisplayText);
-    if FItems[I].Detail <> '' then ItemW := ItemW + 2 + Length(FItems[I].Detail);
+    ItemW := 4 + FItems[I].DisplayText.Length;
+    if FItems[I].Detail <> '' then ItemW := ItemW + 3 + FItems[I].Detail.Length;
     if ItemW > MaxW then MaxW := ItemW;
   end;
   if MaxW > TermW then MaxW := TermW;
   FPopupWidth := MaxW;
 
-  { Anchor X: try to start at cursor; clamp so popup fits }
-  FAnchorX := CursorScreenX;
+  { Anchor X: align popup left edge to cursor; clamp to fit terminal }
+  FAnchorX := ACursorX;
   if FAnchorX + FPopupWidth - 1 > TermW then
     FAnchorX := TermW - FPopupWidth + 1;
   if FAnchorX < 1 then FAnchorX := 1;
 
-  { Anchor Y: prefer one row below the editor; flip above if needed }
+  { Anchor Y: prefer one row below cursor; flip above if needed }
   PopupH := VisibleCount;
-  if AEditorTop + 1 + PopupH - 1 <= TermH then
-    FAnchorY := AEditorTop + 1    { below }
+  if ACursorY + 1 + PopupH - 1 <= TermH then
+    FAnchorY := ACursorY + 1
   else
-    FAnchorY := AEditorTop - PopupH;  { above }
+    FAnchorY := ACursorY - PopupH;
   if FAnchorY < 1 then FAnchorY := 1;
 end;
 
-procedure TCompletionPopup.TriggerFromEditor(AEditor: TTextEdit);
+procedure TCompletionPopup.CalcLayout(AEditorLeft, AEditorTop: Integer);
+begin
+  { Anchor at the word start, not the cursor, so the popup aligns with the
+    first character of the prefix being completed. }
+  CalcLayoutAt(AEditorLeft + FContext.WordStart, AEditorTop);
+end;
+
+procedure TCompletionPopup.TriggerFromEditor(AEditor: TTextEdit; AForce: Boolean);
 var
-  WordChars: string;
+  WordChars:    string;
+  PrevCursorPos: Integer;
 begin
   if not Assigned(FDataSource) then Exit;
 
-  WordChars := FDataSource.WordChars;
-  FContext  := BuildContext(AEditor.Text, AEditor.CursorPos, WordChars);
+  PrevCursorPos := FContext.CursorPos;
+  WordChars     := FDataSource.WordChars;
+  FContext      := BuildContext(AEditor.Text, AEditor.CursorPos, WordChars);
+
+  { Hide if cursor retreated before the word start recorded at trigger time }
+  if FVisible and not AForce and (FContext.CursorPos < FTriggerWordStart) then
+  begin
+    Hide;
+    Exit;
+  end;
+
+  { Don't auto-show when the cursor moved backward (backspacing) }
+  if not FVisible and not AForce and (FContext.CursorPos < PrevCursorPos) then
+    Exit;
 
   { Lift suppression if cursor moved }
   if FSuppressed and (AEditor.CursorPos <> FSuppressedPos) then
     FSuppressed := False;
 
-  if FSuppressed then Exit;
+  if FSuppressed and not AForce then Exit;
+  if AForce then FSuppressed := False;
 
-  if not FDataSource.ShouldTrigger(FContext) then
+  if not AForce and not FDataSource.ShouldTrigger(FContext) then
   begin
     Hide;
     Exit;
@@ -630,9 +685,15 @@ begin
     Exit;
   end;
 
-  { Auto-select first item }
-  FSel     := 0;
-  FTopItem := 0;
+  if FVisible then
+    FSel := Min(FSel, FItems.Count - 1)
+  else
+  begin
+    FSel     := 0;
+    FTopItem := 0;
+  end;
+
+  FTriggerWordStart := FContext.WordStart;
 
   CalcLayout(AEditor.Left, AEditor.Top);
   FVisible := True;
@@ -646,11 +707,9 @@ begin
   case Key.Code of
     kcDown:
     begin
-      if FSel < FItems.Count - 1 then
-      begin
-        Inc(FSel);
-        Clamp;
-      end;
+      
+      if FSel < FItems.Count - 1 then Inc(FSel);
+      Clamp;
       Result := True;
     end;
     kcUp:
@@ -659,20 +718,19 @@ begin
       begin
         Dec(FSel);
         Clamp;
-      end
-      else
-        { Up from first item hides the popup so the cursor can go up in the editor }
-        Hide;
+      end;
       Result := True;
     end;
     kcPageDown:
     begin
+      
       Inc(FSel, FMaxVisible);
       Clamp;
       Result := True;
     end;
     kcPageUp:
     begin
+      
       Dec(FSel, FMaxVisible);
       if FSel < 0 then FSel := 0;
       Clamp;
@@ -728,12 +786,134 @@ begin
   if Result then DoCommit(AEditor, cmReplacePrefix, Ch);
 end;
 
+procedure TCompletionPopup.TriggerFromMultiEditor(AEditor: TTextEditor; AForce: Boolean);
+var
+  CurLine:      string;
+  CurPos:       Integer;
+  WordChars:    string;
+  PrevCursorPos: Integer;
+begin
+  if not Assigned(FDataSource) then Exit;
+
+  PrevCursorPos := FContext.CursorPos;
+
+  if AEditor.Lines.Count > 0 then
+    CurLine := AEditor.Lines[AEditor.CursorRow - 1]
+  else
+    CurLine := '';
+  CurPos    := AEditor.CursorCol - 1;   { convert 1-based to 0-based }
+  WordChars := FDataSource.WordChars;
+  FContext  := BuildContext(CurLine, CurPos, WordChars);
+
+  { Hide if cursor moved to a different row, or retreated before word start }
+  if FVisible and not AForce then
+  begin
+    if (AEditor.CursorRow <> FTriggerRow) or
+       (FContext.CursorPos < FTriggerWordStart) then
+    begin
+      Hide;
+      Exit;
+    end;
+  end;
+
+  { Don't auto-show when the cursor moved backward (backspacing) }
+  if not FVisible and not AForce and (CurPos < PrevCursorPos) then
+    Exit;
+
+  { Lift suppression if cursor moved }
+  if FSuppressed and
+     (AEditor.CursorRow * 100000 + CurPos <> FSuppressedPos) then
+    FSuppressed := False;
+
+  if FSuppressed and not AForce then Exit;
+  if AForce then FSuppressed := False;
+
+  if not AForce and not FDataSource.ShouldTrigger(FContext) then
+  begin
+    Hide;
+    Exit;
+  end;
+
+  FItems.Clear;
+  FDataSource.GetCompletions(FContext, FItems);
+
+  if FItems.Count = 0 then
+  begin
+    Hide;
+    Exit;
+  end;
+
+  { Preserve the current selection when updating an already-visible popup so
+    that keyboard navigation is not reset by retriggering. }
+  if FVisible then
+    FSel := Min(FSel, FItems.Count - 1)
+  else
+  begin
+    FSel     := 0;
+    FTopItem := 0;
+  end;
+
+  FTriggerWordStart := FContext.WordStart;
+  FTriggerRow       := AEditor.CursorRow;
+
+  CalcLayoutAt(AEditor.CursorScreenCol - (FContext.CursorPos - FContext.WordStart),
+               AEditor.CursorScreenRow);
+  FVisible := True;
+end;
+
+procedure TCompletionPopup.DoCommitMulti(AEditor: TTextEditor; AMode: TCommitMode;
+  const AExtraChar: TUTF8Char);
+var
+  Item:    TCompletionItem;
+  Insert:  string;
+  RepFrom: Integer;
+  RepTo:   Integer;
+begin
+  Item := GetSelected;
+  if not Assigned(Item) then Exit;
+
+  Insert  := Item.EffectiveInsert;
+  RepFrom := FContext.WordStart;
+
+  case AMode of
+    cmReplaceWord:   RepTo := FContext.WordEnd;
+    cmReplacePrefix: RepTo := FContext.CursorPos;
+  end;
+
+  if AExtraChar <> '' then
+    Insert := Insert + string(AExtraChar);
+
+  AEditor.ReplaceCurrentLineRange(RepFrom, RepTo, Insert);
+  Hide;
+end;
+
+function TCompletionPopup.CommitInto(AEditor: TTextEditor; AMode: TCommitMode): Boolean;
+begin
+  Result := FVisible and (FSel >= 0) and (FSel < FItems.Count);
+  if Result then DoCommitMulti(AEditor, AMode, '');
+end;
+
+function TCompletionPopup.CommitOnChar(AEditor: TTextEditor;
+  const Ch: TUTF8Char): Boolean;
+begin
+  Result := FVisible and (FSel >= 0) and (FSel < FItems.Count)
+            and (FDataSource.CommitChars.Pos(Ch) >= 0);
+  if Result then DoCommitMulti(AEditor, cmReplacePrefix, Ch);
+end;
+
 procedure TCompletionPopup.Hide;
 begin
   FVisible := False;
   FItems.Clear;
   FSel     := -1;
   FTopItem := 0;
+end;
+
+function TCompletionPopup.IsWordChar(const ACh: TUTF8Char): Boolean;
+var WC: string;
+begin
+  if Assigned(FDataSource) then WC := FDataSource.WordChars else WC := '';
+  Result := TermUI.Completion.IsWordChar(ACh, WC);
 end;
 
 procedure TCompletionPopup.Paint;

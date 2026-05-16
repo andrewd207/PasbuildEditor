@@ -293,6 +293,7 @@ begin
   if not ReadByte(B) then Exit;
 
   case B of
+    0:   Result.Code := kcCtrlSpace;   { Ctrl+Space / Ctrl+@ }
     1:   Result.Code := kcCtrlA;
     2:   Result.Code := kcCtrlB;
     3:   Result.Code := kcCtrlC;

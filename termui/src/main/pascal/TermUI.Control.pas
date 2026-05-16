@@ -60,6 +60,13 @@ type
     FOnPaint:          TNotifyEvent;
     FOnBoundsChanged:  TNotifyEvent;
     FOnHelp:           THelpEvent;
+    { Logical cursor — control-local coordinates, meaning defined by subclass }
+    FCursorRow:           Integer;
+    FCursorCol:           Integer;
+    FShowCursor:          Boolean;
+    FCursorUpdateDepth:   Integer;   { >0 while BeginCursorUpdate is active }
+    FOnCursorMove:        TNotifyEvent;
+    procedure ApplyCursor;
   protected
     { Override to draw the control. GotoLocal(1,1) positions at the top-left corner. }
     procedure DoPaint; virtual;
@@ -69,22 +76,44 @@ type
     procedure DoGainFocus; virtual;
     { Called when the control loses input focus. }
     procedure DoLoseFocus; virtual;
-    { Called from SetBounds after new bounds are stored. Override in containers to
-      rearrange children, or in leaf controls to recompute display state (e.g. truncate
-      labels, recalculate scroll limits). Fires before OnBoundsChanged and Invalidate. }
+    { Called from SetBounds after new bounds are stored. }
     procedure DoBoundsChanged; virtual;
-    { Override to handle a help request before OnHelp fires. Containers should try
-      their focused child first. Return True to stop propagation. }
+    { Override to handle a help request before OnHelp fires. }
     function  DoHelp: Boolean; virtual;
     { Position the terminal cursor at control-local coordinates (1-based). }
     procedure GotoLocal(AX, AY: Integer); inline;
+
+    { Logical cursor position within the control (meaning is subclass-defined).
+      Set via SetCursorPos; read-only here so subclasses can observe it. }
+    property CursorRow: Integer read FCursorRow;
+    property CursorCol: Integer read FCursorCol;
+
+    { Translate the logical cursor (FCursorRow, FCursorCol) to a 1-based
+      terminal column and row.  Return True if the cursor is currently visible
+      within the control's viewport; False to suppress cursor display.
+      Base implementation returns False (no cursor). }
+    function  CursorToScreen(out AScreenCol, AScreenRow: Integer): Boolean; virtual;
   public
     constructor Create; virtual;
 
-    { Store new bounds, call DoBoundsChanged, fire OnBoundsChanged, then Invalidate.
-      Skips the notifications and repaint when bounds are unchanged. }
+    { Store new bounds, call DoBoundsChanged, fire OnBoundsChanged, Invalidate. }
     procedure SetBounds(ALeft, ATop, AWidth, AHeight: Integer); virtual;
     procedure Invalidate; virtual;
+
+    { Record the control's logical cursor position (coordinates are
+      subclass-defined — e.g. line/col for a text editor, item index for a
+      list).  Outside an update block, also repositions the terminal cursor
+      when ShowCursor=True, and fires OnCursorMove.
+      Subclasses override to store the position in their own fields and call
+      inherited. }
+    procedure SetCursorPos(ARow, ACol: Integer); virtual;
+
+    { Bracket painting or any batch cursor movement.  BeginCursorUpdate hides
+      the terminal cursor (if visible); EndCursorUpdate restores it via
+      CursorToScreen and fires OnCursorMove.  Calls may be nested — the cursor
+      is restored only when the outermost EndCursorUpdate is reached. }
+    procedure BeginCursorUpdate;
+    procedure EndCursorUpdate;
 
     { Paint the control if visible. Clears FInvalidated. }
     procedure Paint;
@@ -104,12 +133,17 @@ type
     property Enabled:     Boolean       read FEnabled     write FEnabled;
     property Focusable:   Boolean       read FFocusable   write FFocusable;
     property Invalidated: Boolean       read FInvalidated;
-    property ForeColor: TColor read FForeColor write FForeColor;
-    property BackColor: TColor read FBackColor write FBackColor;
+    property ForeColor:   TColor        read FForeColor    write FForeColor;
+    property BackColor:   TColor        read FBackColor    write FBackColor;
+    { When True this control has a text cursor; the application will position
+      the terminal cursor at CursorToScreen when this control has focus. }
+    property ShowCursor:  Boolean       read FShowCursor   write FShowCursor;
     property OnKeyDown:       TKeyDownEvent read FOnKeyDown        write FOnKeyDown;
     property OnPaint:         TNotifyEvent  read FOnPaint           write FOnPaint;
     property OnBoundsChanged: TNotifyEvent  read FOnBoundsChanged   write FOnBoundsChanged;
     property OnHelp:          THelpEvent    read FOnHelp            write FOnHelp;
+    { Fires when the logical cursor position changes, outside an update block. }
+    property OnCursorMove:    TNotifyEvent  read FOnCursorMove      write FOnCursorMove;
   end;
 
 implementation
@@ -117,12 +151,60 @@ implementation
 constructor TControl.Create;
 begin
   inherited Create;
-  FVisible    := True;
-  FEnabled    := True;
-  FFocusable  := True;
+  FVisible     := True;
+  FEnabled     := True;
+  FFocusable   := True;
   FInvalidated := True;
-  FForeColor  := clDefault;
-  FBackColor  := clDefault;
+  FForeColor   := clDefault;
+  FBackColor   := clDefault;
+end;
+
+function TControl.CursorToScreen(out AScreenCol, AScreenRow: Integer): Boolean;
+begin
+  AScreenCol := 0;
+  AScreenRow := 0;
+  Result     := False;
+end;
+
+procedure TControl.ApplyCursor;
+var SCol, SRow: Integer;
+begin
+  if FShowCursor and CursorToScreen(SCol, SRow) then
+  begin
+    Term.ShowCursor;
+    Term.PlaceCursor(SCol, SRow);
+  end
+  else
+    Term.HideCursor;
+end;
+
+procedure TControl.SetCursorPos(ARow, ACol: Integer);
+begin
+  FCursorRow := ARow;
+  FCursorCol := ACol;
+  if FCursorUpdateDepth = 0 then
+  begin
+    ApplyCursor;
+    if Assigned(FOnCursorMove) then FOnCursorMove(Self);
+  end;
+end;
+
+procedure TControl.BeginCursorUpdate;
+begin
+  if FCursorUpdateDepth = 0 then
+    Term.HideCursor;
+  Inc(FCursorUpdateDepth);
+end;
+
+procedure TControl.EndCursorUpdate;
+begin
+  if FCursorUpdateDepth <= 0 then Exit;
+  Dec(FCursorUpdateDepth);
+  if FCursorUpdateDepth = 0 then
+  begin
+    ApplyCursor;
+    if Assigned(FOnCursorMove) then FOnCursorMove(Self);
+  end;
 end;
 
 procedure TControl.SetBounds(ALeft, ATop, AWidth, AHeight: Integer);

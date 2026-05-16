@@ -562,7 +562,7 @@ end;
 
 procedure TComboBox.DoPaint;
 var
-  InnerW, Scroll, Pad, PadL, PadR, CursorCol: Integer;
+  InnerW, Scroll, Pad, PadL, PadR, CursorX: Integer;
   Display:                                     string;
   CFG, CBG, InvFG, InvBG:                      TColor;
 begin
@@ -646,8 +646,8 @@ begin
     cursor so the OS cursor blinks in the right place for inline editing. }
   if FStyle = csDropDown then
   begin
-    CursorCol := 2 + (FEditCursor - Scroll);
-    GotoLocal(CursorCol, 1);
+    CursorX := 2 + (FEditCursor - Scroll);
+    GotoLocal(CursorX, 1);
     Term.ShowCursor;
   end
   else

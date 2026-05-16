@@ -47,6 +47,7 @@ type
     kcCtrlN, kcCtrlO, kcCtrlP, kcCtrlQ, kcCtrlR,
     kcCtrlS, kcCtrlT, kcCtrlU, kcCtrlV, kcCtrlW,
     kcCtrlX, kcCtrlY, kcCtrlZ,
+    kcCtrlSpace,
     { Function keys F1–F14 }
     kcF1, kcF2, kcF3, kcF4, kcF5, kcF6, kcF7,
     kcF8, kcF9, kcF10, kcF11, kcF12, kcF13, kcF14,

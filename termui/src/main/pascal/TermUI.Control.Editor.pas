@@ -10,6 +10,7 @@
 unit TermUI.Control.Editor;
 
 {$mode objfpc}{$H+}
+{$modeswitch typehelpers}
 
 { Multi-line text editor control.
 
@@ -120,7 +121,6 @@ type
     procedure SetWordWrap(AValue: Boolean);
     procedure SetHighlighter(AValue: TTextHighlighter);
     function  GetLines: TStrings;
-    function  CursorScreenRow: Integer;
 
     { Selection helpers }
     procedure SetAnchor;      { activate selection anchored at current cursor }
@@ -160,6 +160,10 @@ type
     procedure DoPaint; override;
     procedure DoBoundsChanged; override;
     function  DoKeyDown(var Key: TKeyEvent): Boolean; override;
+    { Stores ARow→FCurRow, ACol→FCurCol then calls inherited. }
+    procedure SetCursorPos(ARow, ACol: Integer); override;
+    { Translates (FCurRow, FCurCol) + scroll offsets to 1-based terminal coords. }
+    function  CursorToScreen(out AScreenCol, AScreenRow: Integer): Boolean; override;
   public
     constructor Create; override;
     destructor  Destroy; override;
@@ -195,7 +199,16 @@ type
 
     property CursorRow:   Integer           read FCurRow;
     property CursorCol:   Integer           read FCurCol;
-    property OnChange:    TNotifyEvent      read FOnChange    write FOnChange;
+    property OnChange:     TNotifyEvent      read FOnChange     write FOnChange;
+
+    { 0-based terminal row/column of the text cursor, for popup anchoring. }
+    function CursorScreenRow: Integer;
+    function CursorScreenCol: Integer;
+
+    { Replace chars [AFrom..ATo) (0-based codepoint positions within the current
+      line) with AText. Cursor is placed immediately after the inserted text.
+      Fires OnChange. }
+    procedure ReplaceCurrentLineRange(AFrom, ATo: Integer; const AText: string);
 
     { Current selection state.  AnchorRow/Col mark the fixed end; the cursor
       is the moving end.  Active=False means no selection. }
@@ -266,6 +279,7 @@ begin
   FTabMode                 := tmSpaces;
   FTabWidth                := 4;
   FHighlightTrailingSpaces := True;
+  ShowCursor := True;
 end;
 
 destructor TTextEditor.Destroy;
@@ -430,6 +444,7 @@ begin
   if FUpdating > 0 then Exit;
   Invalidate;
   if Assigned(FOnChange) then FOnChange(Self);
+  SetCursorPos(FCurRow, FCurCol);
 end;
 
 procedure TTextEditor.ObservedChanged(ASender: TObject;
@@ -493,6 +508,7 @@ procedure TTextEditor.SetReadOnly(AValue: Boolean);
 begin
   if FReadOnly = AValue then Exit;
   FReadOnly := AValue;
+  ShowCursor := not FReadOnly;
   Invalidate;
 end;
 
@@ -531,6 +547,34 @@ begin
     Result := ''
   else
     Result := FLines[FCurRow - 1];
+end;
+
+procedure TTextEditor.SetCursorPos(ARow, ACol: Integer);
+begin
+  FCurRow := ARow;
+  FCurCol := ACol;
+  inherited SetCursorPos(ARow, ACol);
+end;
+
+function TTextEditor.CursorToScreen(out AScreenCol, AScreenRow: Integer): Boolean;
+var VRow, VCol: Integer;
+begin
+  Result := False;
+  if FWordWrap then
+  begin
+    VRow := CursorVisualRow;
+    VCol := FCurCol - 1 - FWrapTable[VRow].StartChar;   { 0-based within visual row }
+    AScreenCol := Left + VCol;                           { Left is 1-based; VCol=0 → col Left }
+    AScreenRow := Top  + (VRow - FTopRow);
+    Result := (VRow >= FTopRow) and (VRow < FTopRow + Height);
+  end
+  else
+  begin
+    AScreenCol := Left + (FCurCol - FLeftCol) - 1;      { FCurCol 1-based, FLeftCol 0-based }
+    AScreenRow := Top  + (FCurRow - FTopRow)  - 1;
+    Result := (FCurRow > FTopRow) and (FCurRow <= FTopRow + Height)
+          and (FCurCol >= FLeftCol + 1) and (FCurCol <= FLeftCol + Width);
+  end;
 end;
 
 procedure TTextEditor.ClampCursor;
@@ -593,6 +637,36 @@ begin
     Result := Top + (CursorVisualRow - FTopRow)
   else
     Result := Top + (FCurRow - FTopRow) - 1;
+end;
+
+function TTextEditor.CursorScreenCol: Integer;
+var VRow: Integer;
+begin
+  if FWordWrap then
+  begin
+    VRow   := CursorVisualRow;
+    Result := Left + (FCurCol - 1 - FWrapTable[VRow].StartChar);
+  end
+  else
+    Result := Left + (FCurCol - FLeftCol) - 1;
+end;
+
+procedure TTextEditor.ReplaceCurrentLineRange(AFrom, ATo: Integer; const AText: string);
+var
+  S: string;
+begin
+  if FReadOnly then Exit;
+  while FLines.Count < FCurRow do FLines.Add('');
+  S := FLines[FCurRow - 1];
+  if AFrom < 0 then AFrom := 0;
+  if ATo > S.Length then ATo := S.Length;
+  FLines[FCurRow - 1] := S.Copy(0, AFrom) + AText + S.Copy(ATo, S.Length - ATo);
+  FCurCol := AFrom + AText.Length + 1;  { 1-based }
+  ClampCursor;
+  EnsureVisStr;
+  Invalidate;
+  if Assigned(FOnChange) then FOnChange(Self);
+  SetCursorPos(FCurRow, FCurCol);
 end;
 
 procedure TTextEditor.InsertChar(ACh: TUTF8Char);
@@ -794,6 +868,7 @@ begin
   end;
   EnsureVisStr;
   Invalidate;
+  SetCursorPos(FCurRow, FCurCol);
 end;
 
 procedure TTextEditor.MoveCursorRight(AWord: Boolean);
@@ -820,6 +895,7 @@ begin
   end;
   EnsureVisStr;
   Invalidate;
+  SetCursorPos(FCurRow, FCurCol);
 end;
 
 procedure TTextEditor.MoveCursorUp;
@@ -839,6 +915,7 @@ begin
       FCurCol := NewCol + 1;
       EnsureVisStr;
       Invalidate;
+      SetCursorPos(FCurRow, FCurCol);
     end;
   end
   else
@@ -851,6 +928,7 @@ begin
     end;
     EnsureVisStr;
     Invalidate;
+    SetCursorPos(FCurRow, FCurCol);
   end;
 end;
 
@@ -871,6 +949,7 @@ begin
       FCurCol := NewCol + 1;
       EnsureVisStr;
       Invalidate;
+      SetCursorPos(FCurRow, FCurCol);
     end;
   end
   else
@@ -883,6 +962,7 @@ begin
     end;
     EnsureVisStr;
     Invalidate;
+    SetCursorPos(FCurRow, FCurCol);
   end;
 end;
 
@@ -891,6 +971,7 @@ begin
   FCurCol := 1;
   EnsureVisStr;
   Invalidate;
+  SetCursorPos(FCurRow, FCurCol);
 end;
 
 procedure TTextEditor.MoveEnd;
@@ -898,6 +979,7 @@ begin
   FCurCol := CurrentLine.Length + 1;
   EnsureVisStr;
   Invalidate;
+  SetCursorPos(FCurRow, FCurCol);
 end;
 
 procedure TTextEditor.MoveDocStart;
@@ -905,6 +987,7 @@ begin
   FCurRow := 1; FCurCol := 1;
   FTopRow := 0; FLeftCol := 0;
   Invalidate;
+  SetCursorPos(FCurRow, FCurCol);
 end;
 
 procedure TTextEditor.MoveDocEnd;
@@ -913,6 +996,7 @@ begin
   FCurCol := CurrentLine.Length + 1;
   EnsureVisStr;
   Invalidate;
+  SetCursorPos(FCurRow, FCurCol);
 end;
 
 procedure TTextEditor.ScrollUp;
@@ -1098,8 +1182,9 @@ var
   S:                             string;
   Spans:                         TTextSpanArray;
   TrailStart, SLen, N, SpanIdx:  Integer;
-  VCurRow, VCurCol:              Integer;
 begin
+  BeginCursorUpdate;
+  try
   if Assigned(FHighlighter) then
     FHighlighter.Prepare(FLines);
 
@@ -1145,15 +1230,6 @@ begin
         PaintLine(Row, '', -1, nil, 0);
     end;
 
-    if not FReadOnly then
-    begin
-      VCurRow := CursorVisualRow;
-      VCurCol := FCurCol - 1 - FWrapTable[VCurRow].StartChar;   { 0-based within visual row }
-      Term.ShowCursor;
-      Term.PlaceCursor(Left + VCurCol, Top + (VCurRow - FTopRow));
-    end
-    else
-      Term.HideCursor;
   end
   else
   begin
@@ -1190,17 +1266,12 @@ begin
       PaintLine(Row, S, LineIdx, Spans, FLeftCol);
     end;
 
-    if not FReadOnly then
-    begin
-      Term.ShowCursor;
-      Term.PlaceCursor(Left + (FCurCol - FLeftCol) - 1,
-                       Top  + (FCurRow - FTopRow)  - 1);
-    end
-    else
-      Term.HideCursor;
   end;
 
   inherited DoPaint;
+  finally
+    EndCursorUpdate;
+  end;
 end;
 
 procedure TTextEditor.DoBoundsChanged;

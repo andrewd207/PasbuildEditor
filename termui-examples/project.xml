@@ -15,5 +15,6 @@
     <module>termui-example-listbox</module>
     <module>termui-example-propeditor</module>
     <module>termui-example-completion</module>
+    <module>termui-example-editor-completion</module>
   </modules>
 </project>
