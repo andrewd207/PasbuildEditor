@@ -63,6 +63,9 @@ type
     { Returns the number of bytes spanned by ACharCount codepoints starting at
       1-based byte position AByteStart. }
     function  CharByteSpan(AByteStart, ACharCount: Integer): Integer;
+    { Returns the 0-based codepoint index corresponding to 1-based byte position
+      ABytePos. The byte must be the start of a codepoint. }
+    function  ByteToCharPos(ABytePos: Integer): Integer;
   public
     { Byte-level indexed access (0-based). Existing callers use this. }
     property Index[AIndex: Integer]: Char read GetIndex write SetIndex;
@@ -82,6 +85,13 @@ type
 
     { Removes ACount codepoints starting at 0-based codepoint index AFrom. }
     procedure Delete(AFrom, ACount: Integer);
+
+    { Search for ASubStr within Self.
+      Returns the 0-based codepoint index of the first match, or -1 if absent.
+      The single-char overload accepts a TUTF8Char (codepoint);
+      the string overload accepts a multi-character substring. }
+    function Pos(const ASubStr: TUTF8Char): Integer; overload;
+    function Pos(const ASubStr: string): Integer; overload;
   end;
 
   TRawByteStringHelper = type helper for RawbyteString
@@ -98,6 +108,9 @@ type
     { Returns the number of bytes spanned by ACharCount codepoints starting at
       1-based byte position AByteStart. }
     function  CharByteSpan(AByteStart, ACharCount: Integer): Integer;
+    { Returns the 0-based codepoint index corresponding to 1-based byte position
+      ABytePos. The byte must be the start of a codepoint. }
+    function  ByteToCharPos(ABytePos: Integer): Integer;
   public
     { Byte-level indexed access (0-based). Existing callers use this. }
     property Index[AIndex: Integer]: Char read GetIndex write SetIndex;
@@ -117,6 +130,11 @@ type
 
     { Removes ACount codepoints starting at 0-based codepoint index AFrom. }
     procedure Delete(AFrom, ACount: Integer);
+
+    { Search for ASubStr within Self.
+      Returns the 0-based codepoint index of the first match, or -1 if absent. }
+    function Pos(const ASubStr: TUTF8Char): Integer; overload;
+    function Pos(const ASubStr: string): Integer; overload;
   end;
 
 function CharIsOneOf(C: TUtf8Char; const A: array of Char): Boolean;
@@ -279,6 +297,34 @@ begin
   System.Delete(Self, ByteStart, ByteLen);
 end;
 
+function TStringHelper.ByteToCharPos(ABytePos: Integer): Integer;
+var I: Integer;
+begin
+  Result := 0;
+  I := 1;
+  while I < ABytePos do
+  begin
+    Inc(I, UTF8SeqLen(Self, I));
+    Inc(Result);
+  end;
+end;
+
+function TStringHelper.Pos(const ASubStr: TUTF8Char): Integer;
+var BytePos: Integer;
+begin
+  BytePos := System.Pos(string(ASubStr), Self);
+  if BytePos = 0 then Result := -1
+  else Result := ByteToCharPos(BytePos);
+end;
+
+function TStringHelper.Pos(const ASubStr: string): Integer;
+var BytePos: Integer;
+begin
+  BytePos := System.Pos(ASubStr, Self);
+  if BytePos = 0 then Result := -1
+  else Result := ByteToCharPos(BytePos);
+end;
+
 { ─TRawByteStringHelper─  ── }
 
 function TRawByteStringHelper.GetIndex(AIndex: Integer): Char;
@@ -360,5 +406,32 @@ begin
   System.Delete(Self, ByteStart, ByteLen);
 end;
 
+function TRawByteStringHelper.ByteToCharPos(ABytePos: Integer): Integer;
+var I: Integer;
+begin
+  Result := 0;
+  I := 1;
+  while I < ABytePos do
+  begin
+    Inc(I, UTF8SeqLen(Self, I));
+    Inc(Result);
+  end;
+end;
+
+function TRawByteStringHelper.Pos(const ASubStr: TUTF8Char): Integer;
+var BytePos: Integer;
+begin
+  BytePos := System.Pos(string(ASubStr), string(Self));
+  if BytePos = 0 then Result := -1
+  else Result := ByteToCharPos(BytePos);
+end;
+
+function TRawByteStringHelper.Pos(const ASubStr: string): Integer;
+var BytePos: Integer;
+begin
+  BytePos := System.Pos(ASubStr, string(Self));
+  if BytePos = 0 then Result := -1
+  else Result := ByteToCharPos(BytePos);
+end;
 
 end.

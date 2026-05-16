@@ -14,5 +14,6 @@
     <module>termui-example-progressbar</module>
     <module>termui-example-listbox</module>
     <module>termui-example-propeditor</module>
+    <module>termui-example-completion</module>
   </modules>
 </project>

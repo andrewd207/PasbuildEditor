@@ -10,6 +10,7 @@
 unit TermUI.Control.LineEditor;
 
 {$mode objfpc}{$H+}
+{$modeswitch typehelpers}
 
 interface
 
@@ -19,12 +20,17 @@ uses
 type
   { Single-line text editor control.
     SetBounds defines the field area; the full width is used as the visible field.
-    FCur is 1-based; FScroll is the number of bytes scrolled off the left edge. }
+
+    All string positions are 0-based UTF-8 character (codepoint) indices:
+      FCur    0-based char position of the insertion cursor.
+              0 = before the first char; FBuf.Length = after the last char.
+      FScroll 0-based char offset scrolled off the left edge.
+  }
   TTextEdit = class(TControl)
   private
     FBuf:          string;
-    FCur:          Integer;   { 1-based cursor position in FBuf }
-    FScroll:       Integer;   { bytes scrolled off the left }
+    FCur:          Integer;   { 0-based char cursor position }
+    FScroll:       Integer;   { 0-based char scroll offset  }
     FPasswordChar: Char;      { #0 = plain text }
     FPlaceholder:  string;
     FOnChange:     TNotifyEvent;
@@ -40,8 +46,12 @@ type
   public
     constructor Create; override;
     procedure Clear;
+    { Replace chars [AFrom..ATo) (0-based, ATo exclusive) with AReplacement.
+      Cursor is placed immediately after the inserted text.
+      Fires OnChange but not OnAccept. }
+    procedure ReplaceRange(AFrom, ATo: Integer; const AReplacement: string);
     property Text:         string       read FBuf         write SetBuf;
-    property CursorPos:    Integer      read FCur;
+    property CursorPos:    Integer      read FCur;   { 0-based char index }
     property PasswordChar: Char         read FPasswordChar write FPasswordChar;
     property Placeholder:  string       read FPlaceholder  write FPlaceholder;
     property OnChange:     TNotifyEvent read FOnChange     write FOnChange;
@@ -54,7 +64,7 @@ implementation
 constructor TTextEdit.Create;
 begin
   inherited Create;
-  FCur          := 1;
+  FCur          := 0;
   FScroll       := 0;
   FPasswordChar := #0;
 end;
@@ -62,7 +72,7 @@ end;
 procedure TTextEdit.SetBuf(const AValue: string);
 begin
   FBuf    := AValue;
-  FCur    := Length(FBuf) + 1;
+  FCur    := FBuf.Length;   { place cursor after last char }
   FScroll := 0;
   ClampScroll;
   Invalidate;
@@ -70,27 +80,30 @@ end;
 
 procedure TTextEdit.ClampScroll;
 begin
-  if FCur - FScroll < 1     then FScroll := FCur - 1;
-  if FCur - FScroll > Width then FScroll := FCur - Width;
+  { Keep FCur in the visible window [FScroll .. FScroll + Width - 1]. }
+  if FCur < FScroll then FScroll := FCur;
+  if FCur - FScroll >= Width then FScroll := FCur - Width + 1;
   if FScroll < 0 then FScroll := 0;
 end;
 
 function TTextEdit.WordLeft: Integer;
 var I: Integer;
 begin
-  I := FCur - 1;
-  while (I > 1) and (FBuf[I - 1] = ' ') do Dec(I);
-  while (I > 1) and (FBuf[I - 1] <> ' ') do Dec(I);
+  I := FCur;
+  while (I > 0) and (FBuf.Chars[I - 1] = ' ') do Dec(I);
+  while (I > 0) and (FBuf.Chars[I - 1] <> ' ') do Dec(I);
   Result := I;
 end;
 
 function TTextEdit.WordRight: Integer;
-var I, Len: Integer;
+var
+  Len: Integer;
+  I:   Integer;
 begin
-  Len := Length(FBuf);
+  Len := FBuf.Length;
   I   := FCur;
-  while (I <= Len) and (FBuf[I] <> ' ') do Inc(I);
-  while (I <= Len) and (FBuf[I] = ' ')  do Inc(I);
+  while (I < Len) and (FBuf.Chars[I] <> ' ') do Inc(I);
+  while (I < Len) and (FBuf.Chars[I] = ' ')  do Inc(I);
   Result := I;
 end;
 
@@ -111,7 +124,9 @@ begin
   else if FPasswordChar <> #0 then
   begin
     Term.ResetColors;
-    Display := CopyNeutral(StringOfChar(FPasswordChar, Length(FBuf)), FScroll, Width);
+    { Build a mask the same char length as FBuf, then scroll it }
+    Display := CopyNeutral(
+      StringOfChar(FPasswordChar, FBuf.Length), FScroll, Width);
   end
   else
   begin
@@ -126,7 +141,8 @@ begin
 
   Term.ResetColors;
   Term.ShowCursor;
-  GotoLocal(FCur - FScroll, 1);
+  { FCur - FScroll is 0-based display offset; +1 converts to 1-based GotoLocal. }
+  GotoLocal(FCur - FScroll + 1, 1);
   inherited DoPaint;
 end;
 
@@ -134,47 +150,61 @@ function TTextEdit.DoKeyDown(var Key: TKeyEvent): Boolean;
 begin
   Result := True;
   case Key.Code of
-    kcLeft:      begin if FCur > 1               then Dec(FCur);      Invalidate; end;
-    kcRight:     begin if FCur <= Length(FBuf)   then Inc(FCur);      Invalidate; end;
-    kcHome:      begin FCur := 1;                                      Invalidate; end;
-    kcEnd:       begin FCur := Length(FBuf) + 1;                      Invalidate; end;
-    kcCtrlLeft:  begin FCur := WordLeft;                               Invalidate; end;
-    kcCtrlRight: begin FCur := WordRight;                              Invalidate; end;
-    kcBackspace:
-      if FCur > 1 then
+    kcLeft:
       begin
-        DeleteNeutral(FBuf, FCur - 2, 1);
+        if FCur > 0 then Dec(FCur);
+        Invalidate;
+      end;
+    kcRight:
+      begin
+        if FCur < FBuf.Length then Inc(FCur);
+        Invalidate;
+      end;
+    kcHome:      begin FCur := 0;           Invalidate; end;
+    kcEnd:       begin FCur := FBuf.Length; Invalidate; end;
+    kcCtrlLeft:  begin FCur := WordLeft;    Invalidate; end;
+    kcCtrlRight: begin FCur := WordRight;   Invalidate; end;
+
+    kcBackspace:
+      if FCur > 0 then
+      begin
+        FBuf.Delete(FCur - 1, 1);
         Dec(FCur);
         Invalidate;
         if Assigned(FOnChange) then FOnChange(Self);
       end;
+
     kcDelete:
-      if FCur <= Length(FBuf) then
+      if FCur < FBuf.Length then
       begin
-        DeleteNeutral(FBuf, FCur - 1, 1);
+        FBuf.Delete(FCur, 1);
         Invalidate;
         if Assigned(FOnChange) then FOnChange(Self);
       end;
-    kcCtrlK:
+
+    kcCtrlK:   { kill to end of line }
       begin
-        FBuf := Copy(FBuf, 1, FCur - 1);
+        FBuf := FBuf.Copy(0, FCur);
         Invalidate;
         if Assigned(FOnChange) then FOnChange(Self);
       end;
-    kcCtrlU:
+
+    kcCtrlU:   { kill to start of line }
       begin
-        FBuf := Copy(FBuf, FCur, MaxInt);
-        FCur := 1; FScroll := 0;
+        FBuf := FBuf.Copy(FCur, FBuf.Length - FCur);
+        FCur := 0; FScroll := 0;
         Invalidate;
         if Assigned(FOnChange) then FOnChange(Self);
       end;
+
     kcEnter:  if Assigned(FOnAccept) then FOnAccept(Self);
     kcEscape: if Assigned(FOnCancel) then FOnCancel(Self);
+
     kcChar:
       if Key.Ch >= ' ' then
       begin
-        Insert(Key.Ch, FBuf, FCur);
-        Inc(FCur, System.Length(string(Key.Ch)));
+        InsertNeutral(FBuf, Key.Ch, FCur);
+        Inc(FCur);   { always 1 codepoint regardless of UTF-8 byte width }
         Invalidate;
         if Assigned(FOnChange) then FOnChange(Self);
       end;
@@ -183,10 +213,21 @@ begin
   end;
 end;
 
+procedure TTextEdit.ReplaceRange(AFrom, ATo: Integer; const AReplacement: string);
+begin
+  if AFrom < 0 then AFrom := 0;
+  if ATo > FBuf.Length then ATo := FBuf.Length;
+  FBuf := FBuf.Copy(0, AFrom) + AReplacement + FBuf.Copy(ATo, FBuf.Length - ATo);
+  FCur := AFrom + AReplacement.Length;
+  ClampScroll;
+  Invalidate;
+  if Assigned(FOnChange) then FOnChange(Self);
+end;
+
 procedure TTextEdit.Clear;
 begin
   FBuf    := '';
-  FCur    := 1;
+  FCur    := 0;
   FScroll := 0;
   Invalidate;
   if Assigned(FOnChange) then FOnChange(Self);
