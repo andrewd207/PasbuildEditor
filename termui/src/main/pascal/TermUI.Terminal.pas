@@ -180,6 +180,10 @@ type
     function ReadKey: TKeyEvent; virtual; abstract;
     { Non-blocking variant: returns False on timeout, True + filled AKey on keypress. }
     function ReadKeyTimeout(out AKey: TKeyEvent; TimeoutMs: Integer): Boolean; virtual; abstract;
+    { Discard all keypresses currently buffered in the terminal input queue.
+      Use after a blocking operation (e.g. subprocess) to prevent stale input
+      from being consumed by the next interactive control. }
+    procedure DiscardPendingInput;
 
     { Buffer-aware drawing — these write into the back buffer. }
     procedure WriteStr(const S: string); virtual;
@@ -329,6 +333,13 @@ end;
 function TTerminal.HasResized: Boolean;
 begin
   Result := False;
+end;
+
+procedure TTerminal.DiscardPendingInput;
+var
+  Key: TKeyEvent;
+begin
+  while ReadKeyTimeout(Key, 0) do ;
 end;
 
 procedure TTerminal.RawWrite(const S: RawByteString);

@@ -12,6 +12,8 @@
     </resources>
     <compilerOptions>
       <option>-FF</option>
+      <option>-gl</option>
+      <option>-gw3</option>
     </compilerOptions>
   </build>
   <test>

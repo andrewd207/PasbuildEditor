@@ -17,9 +17,11 @@ uses
   PasbuildEditor.ProjectModel,
   TermUI.Terminal,
   TermUI.Terminal.Platform,
+  TermUI.Application,
   PasbuildEditor.Consts,
   PasbuildEditor.Compiler.FPC,
   PasbuildEditor.Compiler.Blaise,
+  TermUI.Form.CrashHandler,
   PasbuildEditor.UI;
 
 procedure PrintUsage;
@@ -242,7 +244,18 @@ begin
   end;
 
   try
-    RunUI(Project, ParentPOM);
+    repeat
+      try
+        RunUI(Project, ParentPOM);
+        Break;
+      except
+        on E: Exception do
+        begin
+          Application.ShowExceptionMessage(E);
+          if Application.Terminated then Break;
+        end;
+      end;
+    until False;
   finally
     Project.Free;
     ParentPOM.Free;

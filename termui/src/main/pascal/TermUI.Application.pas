@@ -17,6 +17,10 @@ uses
   Classes, SysUtils, TermUI.Terminal, TermUI.Control, TermUI.Forms, TermUI.Clipboard;
 
 type
+  { Called by ShowExceptionMessage.  Return True to continue, False to terminate. }
+  TExceptionShowFunc = function(E: Exception): Boolean;
+
+type
   { The application event loop. There is one global instance: Application.
 
     Typical usage:
@@ -30,15 +34,19 @@ type
     App-level key handling:
       Application.OnKeyDown := @HandleGlobalKey;
       // HandleGlobalKey receives keys not consumed by the active form or its children. }
+  TFormArray = array of TForm;
+
   TApplication = class
   private
     FTerminated:       Boolean;
-    FFormStack:        array of TForm;
+    FFormStack:        TFormArray;
     FOnKeyDown:        TKeyDownEvent;
     FOnIdle:           TNotifyEvent;
+    FOnPostPaint:      TNotifyEvent;
     FHelpKey:          TKeyCode;
-    FUseUnicodeBorders: Boolean;
+    FUseUnicodeBorders:  Boolean;
     FDrawingChars:       array[TDrawingChar] of string;
+    FOnShowException:    TExceptionShowFunc;
     function  GetActiveForm: TForm;
     function  AnyInvalidated: Boolean;
     procedure DispatchKey(var Key: TKeyEvent);
@@ -66,6 +74,9 @@ type
     { Push/pop the active form. The top of the stack is the active form. }
     procedure PushForm(AForm: TForm);
     procedure PopForm;
+    { Wipe the form stack without freeing forms — call before showing the crash
+      dialog so dangling freed pointers don't get repainted. }
+    procedure ClearFormStack;
 
     { Push AForm, spin ProcessMessages until AForm.ModalResult <> 0, pop and return
       the ModalResult. The caller owns AForm. }
@@ -84,6 +95,12 @@ type
     property OnKeyDown:  TKeyDownEvent read FOnKeyDown  write FOnKeyDown;
     { Fired each ProcessMessages cycle when there is no pending input. }
     property OnIdle:     TNotifyEvent  read FOnIdle     write FOnIdle;
+    { Fired after the form stack has been repainted.  Use to draw overlays that
+      must appear above all forms without being in the form stack. }
+    property OnPostPaint: TNotifyEvent read FOnPostPaint write FOnPostPaint;
+    { Read-only view of the form stack — for overlays that need to invalidate
+      the top form when hiding themselves. }
+    property FormStack: TFormArray read FFormStack;
     { Key that triggers the help propagation chain. Defaults to kcF1.
       Set to kcNone to disable the built-in help key entirely. }
     property HelpKey:    TKeyCode      read FHelpKey    write FHelpKey;
@@ -106,6 +123,17 @@ type
     { Return a string of ACount repetitions of the glyph for ABc.
       Useful for drawing horizontal or vertical lines in one WriteStr call. }
     function  RepeatChar(ABc: TDrawingChar; ACount: Integer): string;
+
+    { Show an exception dialog.  Calls OnShowException if set; if the handler
+      returns False (or none is registered) the application is terminated.
+      Must be called from inside an except block so frame info is still live. }
+    procedure ShowExceptionMessage(E: Exception);
+
+    { Set this to override the default crash dialog.  The function receives the
+      active exception and returns True to continue or False to terminate.
+      TermUI.Form.CrashHandler sets this automatically when included in uses. }
+    property OnShowException: TExceptionShowFunc
+      read FOnShowException write FOnShowException;
   end;
 
 var
@@ -182,6 +210,8 @@ begin
     FFormStack[I].Invalidate;
     FFormStack[I].Paint;
   end;
+  if Assigned(FOnPostPaint) then
+    FOnPostPaint(Self);
   if DirtyRow >= 0 then
     Term.FlushRow(DirtyRow)
   else
@@ -256,11 +286,31 @@ begin
   end;
 end;
 
+procedure TApplication.ClearFormStack;
+begin
+  SetLength(FFormStack, 0);
+end;
+
 procedure TApplication.Run;
 begin
   FTerminated := False;
   while not FTerminated do
-    ProcessMessages;
+  begin
+    try
+      ProcessMessages;
+    except
+      on E: Exception do
+      begin
+        { Free any dangling form-stack pointers left by exception unwind
+          through menu/page procedures, then show the crash dialog while
+          the terminal is still in raw/alt-screen mode. }
+        ClearFormStack;
+        ShowExceptionMessage(E);
+        if FTerminated then Break;
+        { User chose Continue — loop resumes; OnIdle will re-enter the UI. }
+      end;
+    end;
+  end;
 end;
 
 function TApplication.ShowModal(AForm: TForm): Integer;
@@ -421,6 +471,27 @@ begin
   Result := '';
   for I := 1 to ACount do
     Result := Result + FDrawingChars[ABc];
+end;
+
+procedure TApplication.ShowExceptionMessage(E: Exception);
+var
+  ShouldContinue: Boolean;
+  SavedOnIdle:    TNotifyEvent;
+begin
+  { Suppress OnIdle while the crash dialog is visible so the dialog's
+    ShowModal spin-loop cannot re-enter RunProjectUI through the idle hook. }
+  SavedOnIdle := FOnIdle;
+  FOnIdle     := nil;
+  try
+    if Assigned(FOnShowException) then
+      ShouldContinue := FOnShowException(E)
+    else
+      ShouldContinue := False;
+  finally
+    FOnIdle := SavedOnIdle;
+  end;
+  if not ShouldContinue then
+    Terminate;
 end;
 
 initialization

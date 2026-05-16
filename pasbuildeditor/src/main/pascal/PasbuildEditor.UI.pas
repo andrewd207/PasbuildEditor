@@ -65,7 +65,6 @@ end;
 
 procedure TAppDriver.OnIdle(Sender: TObject);
 begin
-  Application.OnIdle := nil;
   RunProjectUI(FCtx);
   Application.Terminate;
 end;
