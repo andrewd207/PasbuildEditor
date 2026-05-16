@@ -37,7 +37,8 @@ unit TermUI.Control.ComboBox;
 interface
 
 uses
-  Classes, TermUI.Terminal, TermUI.Control;
+  Classes, TermUI.Terminal, TermUI.Control,
+  TermUI.Observer, TermUI.ObservedStringList;
 
 type
   TComboBoxStyle = (
@@ -45,9 +46,9 @@ type
     csDropDown   { edit field; typing filters items             }
   );
 
-  TComboBox = class(TControl)
+  TComboBox = class(TControl, ITermUIObserver)
   private
-    FItems:                 TStringList;
+    FItems:                 TObservedStringList;
     FSelectedIndex:         Integer;
     FStyle:                 TComboBoxStyle;
     FRequireValidSelection: Boolean;
@@ -70,7 +71,9 @@ type
     destructor  Destroy; override;
 
     { Items displayed in the drop-down. }
-    property Items: TStringList read FItems;
+    property Items: TObservedStringList read FItems;
+    { ITermUIObserver — auto-repaints when Items are mutated. }
+    procedure ObservedChanged(ASender: TObject; ANotify: TObserverNotification);
 
     { Currently selected item index.  -1 = nothing selected. }
     property SelectedIndex: Integer read FSelectedIndex write SetSelectedIndex;
@@ -110,7 +113,7 @@ end;
 type
   TComboDropDown = class(TForm)
   private
-    FAllItems:   TStringList;  { reference — NOT owned }
+    FAllItems:   TObservedStringList;  { reference — NOT owned }
     FStyle:      TComboBoxStyle;
     FFiltered:   TStringList;  { owned; Objects[i] = PtrInt(original index) }
     FEditText:   string;
@@ -133,7 +136,7 @@ type
     procedure DoPaint; override;
     function  DoKeyDown(var Key: TKeyEvent): Boolean; override;
   public
-    constructor Create(AItems: TStringList; AStyle: TComboBoxStyle;
+    constructor Create(AItems: TObservedStringList; AStyle: TComboBoxStyle;
       const AEditText: string; AInitialOrigIdx: Integer;
       ACtrlLeft, ACtrlTop, ACtrlWidth: Integer);
     destructor  Destroy; override;
@@ -141,7 +144,7 @@ type
     property ResultIndex: Integer read FResultIdx;
   end;
 
-constructor TComboDropDown.Create(AItems: TStringList; AStyle: TComboBoxStyle;
+constructor TComboDropDown.Create(AItems: TObservedStringList; AStyle: TComboBoxStyle;
   const AEditText: string; AInitialOrigIdx: Integer;
   ACtrlLeft, ACtrlTop, ACtrlWidth: Integer);
 var
@@ -450,7 +453,8 @@ end;
 constructor TComboBox.Create;
 begin
   inherited Create;
-  FItems         := TStringList.Create;
+  FItems         := TObservedStringList.Create;
+  FItems.AttachObserver(Self);
   FSelectedIndex := -1;
   FStyle         := csFixed;
   FTextAlign     := taLeft;
@@ -459,8 +463,24 @@ end;
 
 destructor TComboBox.Destroy;
 begin
-  FItems.Free;
+  if Assigned(FItems) then
+  begin
+    FItems.DetachObserver(Self);
+    FItems.Free;
+  end;
   inherited;
+end;
+
+procedure TComboBox.ObservedChanged(ASender: TObject;
+  ANotify: TObserverNotification);
+begin
+  case ANotify.Operation of
+    ooBeginUpdate: ;  { nothing — dropdown re-filters on open }
+    ooEndUpdate, ooAdd, ooInsert, ooDelete, ooClear, ooChange:
+      Invalidate;
+    ooFreeing:
+      FItems := nil;
+  end;
 end;
 
 function TComboBox.GetSelectedText: string;

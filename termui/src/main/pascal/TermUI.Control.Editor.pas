@@ -34,7 +34,7 @@ interface
 
 uses
   Classes, SysUtils, Math, TermUI.Terminal, TermUI.Control, TermUI.StringUtils,
-  TermUI.Clipboard;
+  TermUI.Clipboard, TermUI.Observer, TermUI.ObservedStringList;
 
 type
   { A single styled region within one line.
@@ -88,9 +88,9 @@ type
     StartChar: Integer;
   end;
 
-  TTextEditor = class(TControl)
+  TTextEditor = class(TControl, ITermUIObserver)
   private
-    FLines:                  TStringList;
+    FLines:                  TObservedStringList;
     FReadOnly:               Boolean;
     FWordWrap:               Boolean;
     FCaptureTabs:            Boolean;
@@ -108,6 +108,7 @@ type
     FWrapTable:    array of TWrapEntry;  { rebuilt when WordWrap=True and content/width changes }
 
     procedure LinesChanged(Sender: TObject);
+    procedure ObservedChanged(ASender: TObject; ANotify: TObserverNotification);
     procedure ClampCursor;
     function  EnsureVisStr: Boolean;  { returns True if no scroll occurred }
     function  CurrentLine: string;
@@ -257,8 +258,8 @@ end;
 constructor TTextEditor.Create;
 begin
   inherited Create;
-  FLines       := TStringList.Create;
-  FLines.OnChange := @LinesChanged;
+  FLines       := TObservedStringList.Create;
+  FLines.AttachObserver(Self);
   FCurRow      := 1;
   FCurCol      := 1;
   FCaptureTabs             := True;
@@ -269,7 +270,11 @@ end;
 
 destructor TTextEditor.Destroy;
 begin
-  FLines.Free;
+  if Assigned(FLines) then
+  begin
+    FLines.DetachObserver(Self);
+    FLines.Free;
+  end;
   inherited;
 end;
 
@@ -425,6 +430,23 @@ begin
   if FUpdating > 0 then Exit;
   Invalidate;
   if Assigned(FOnChange) then FOnChange(Self);
+end;
+
+procedure TTextEditor.ObservedChanged(ASender: TObject;
+  ANotify: TObserverNotification);
+begin
+  case ANotify.Operation of
+    ooFreeing:
+      FLines := nil;
+    ooBeginUpdate:
+      { TStrings.BeginUpdate already raises FUpdating via the editor's own
+        BeginUpdate wrapper — nothing extra needed here. } ;
+    ooEndUpdate:
+      { Mirror of the above: EndUpdate handles Invalidate/OnChange. } ;
+  else
+    { ooAdd, ooInsert, ooDelete, ooChange, ooClear — treat like OnChange }
+    LinesChanged(ASender);
+  end;
 end;
 
 procedure TTextEditor.ScrollToBottom;

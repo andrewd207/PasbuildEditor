@@ -10,5 +10,9 @@
   <modules>
     <module>termui-example-filedialog</module>
     <module>termui-example-editor</module>
+    <module>termui-example-treeview</module>
+    <module>termui-example-progressbar</module>
+    <module>termui-example-listbox</module>
+    <module>termui-example-propeditor</module>
   </modules>
 </project>
