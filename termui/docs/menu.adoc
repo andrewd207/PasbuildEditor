@@ -1,0 +1,190 @@
+= TermUI.Menu
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TermUI.Menu` provides a modal menu form (`TMenu`), menu items with several kinds (normal, header, separator, radio, check, submenu), and a set of standalone utility functions for common interactions such as line editing, confirmation dialogs, and status messages.
+
+== TMenuItemKind
+
+[source,pascal]
+----
+TMenuItemKind = (
+  mikNormal,
+  mikHeader,
+  mikSeparator,
+  mikRadio,
+  mikCheck,
+  mikSubmenu
+);
+----
+
+== TMenuItem
+
+[source,pascal]
+----
+TMenuItem = class
+  { Constructors }
+  constructor Create(const ALabel, AValue, AHint: string);
+  constructor CreateEmbeddedHotkey(const ALabel, AValue, AHint: string);
+  constructor CreateHeader(const ALabel: string);
+  constructor CreateSeparator;
+  constructor CreateRadio(const ALabel, AValue, AHint: string; AGroupTag: Integer);
+  constructor CreateCheck(const ALabel, AValue, AHint: string; AChecked: Boolean);
+  constructor CreateSubmenu(const ALabel: string; AItems: TMenuItemList);
+
+  property Label_:   string;
+  property Value:    string;
+  property Hint:     string;
+  property Desc:     string;
+  property Hotkey:   Char;
+  property Enabled:  Boolean;
+  property DimItem:  Boolean;    // render label in dim color
+  property DimValue: Boolean;    // render value in dim color
+  property MarkOld:  Boolean;    // render with strikethrough-style dimming
+  property Checked:  Boolean;    // for mikCheck / mikRadio
+  property GroupTag: Integer;    // radio group identifier
+  property SubItems: TMenuItemList;  // for mikSubmenu
+  property Action:   TNotifyEvent;   // fired when item is selected
+end;
+----
+
+=== Hotkeys
+
+`CreateEmbeddedHotkey` parses the first `&` in `ALabel` and sets `Hotkey` to the following character.
+In the menu display, the hotkey character is rendered underlined; pressing it selects that item directly.
+
+== TMenu
+
+Extends <<forms.adoc#,TForm>>.
+
+[source,pascal]
+----
+TMenu = class(TForm)
+  procedure Add(AItem: TMenuItem);          // takes ownership
+  procedure AddSeparator;
+  procedure AddHeader(const ALabel: string);
+
+  { Navigate to item by label; returns True if found }
+  function SelectByLabel(const ALabel: string): Boolean;
+
+  { Run as modal, returns selected index or -1 }
+  function Run: Integer;
+
+  property Items:        TMenuItemList;
+  property Selected:     Integer;           // 0-based index of current item
+  property SelectedItem: TMenuItem;         // nil if nothing selected
+  property ExitedLeft:   Boolean;           // True if user pressed Left/Escape
+  property UnhandledChar: Char;             // printable char not matched as hotkey
+  property DeletePressed: Boolean;          // True if Delete was pressed on item
+  property HelpDoc:      TStrings;          // content shown by F1 help
+end;
+----
+
+=== Navigation
+
+[cols="1,3"]
+|===
+| Key | Action
+
+| `Up` / `Down`
+| Move selection (skips headers and separators)
+
+| `Home` / `End`
+| Jump to first / last selectable item
+
+| `Enter`
+| Confirm selection; fires item's `Action` event
+
+| `Escape` / `Left`
+| Cancel (sets `ExitedLeft = True`)
+
+| `Delete`
+| Sets `DeletePressed = True` and closes
+
+| Hotkey char
+| Jump to matching item and confirm
+
+| `F1`
+| Show `HelpDoc` in the AsciiDoc viewer (if set)
+|===
+
+== Utility functions
+
+=== EditLine
+
+[source,pascal]
+----
+function EditLine(const APrompt, AInitial: string;
+  out AResult: string): Boolean;
+----
+
+Shows a single-line edit dialog.
+Returns `True` if the user accepted; `False` on Escape.
+
+=== Confirm
+
+[source,pascal]
+----
+function Confirm(const AMsg: string): Boolean;
+----
+
+Shows a Yes/No confirmation dialog.
+Returns `True` for Yes.
+
+=== ShowStatusMsg
+
+[source,pascal]
+----
+procedure ShowStatusMsg(const AMsg: string; AColor: TColor = clDefault);
+----
+
+Writes a transient status message on the bottom row of the terminal.
+
+=== DrawHeader / DrawRule
+
+[source,pascal]
+----
+procedure DrawHeader(const ATitle: string);
+procedure DrawRule;
+----
+
+Helpers for rendering a styled header line and a horizontal rule inside custom menu paint code.
+
+=== PadRight / JoinTruncated
+
+[source,pascal]
+----
+function PadRight(const S: string; AWidth: Integer): string;
+function JoinTruncated(const ALeft, ARight: string; AWidth: Integer): string;
+----
+
+String layout helpers: pad a string to a fixed width, or join two strings with the right part truncated if they exceed `AWidth`.
+
+=== IsValidIdentifier
+
+[source,pascal]
+----
+function IsValidIdentifier(const S: string): Boolean;
+----
+
+Returns `True` if `S` is a valid Pascal identifier (letter/underscore start, alphanumeric/underscore body).
+
+== Global variables
+
+[source,pascal]
+----
+var
+  AppTitle:   string = 'TermUI';
+  AppVersion: string = '';
+----
+
+Used by `DrawHeader` and status bar rendering.
+
+== See also
+
+* <<forms.adoc#,TermUI.Forms>> — TForm base
+* <<menubar.adoc#,TermUI.MenuBar>> — top-of-screen menu bar using TMenu items
+* <<application.adoc#,TermUI.Application>> — ShowModal

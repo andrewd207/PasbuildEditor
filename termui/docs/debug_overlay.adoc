@@ -1,0 +1,77 @@
+= TermUI.Debug.Overlay
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TermUI.Debug.Overlay` provides `TDebugOverlay`, a right-edge debug log panel that paints on top of the application after every frame.
+It is activated by including the unit — the overlay registers itself with `Application.OnPostPaint` automatically in `initialization`.
+
+The global `DebugOverlay` instance and the convenience procedures `DebugLog` / `DebugLogFmt` are available throughout the application without any setup.
+
+== TDebugOverlay
+
+[source,pascal]
+----
+TDebugOverlay = class
+  procedure Log(const AMsg: string);
+  procedure LogFmt(const AFmt: string; const AArgs: array of const);
+
+  procedure Show;
+  procedure Hide;
+  procedure Toggle;
+
+  procedure AfterPaint(Sender: TObject);   // hooked into Application.OnPostPaint
+
+  property Visible:  Boolean;
+  property MaxLines: Integer;   // maximum lines retained (default 100)
+  property Width:    Integer;   // panel width in columns (default 40)
+end;
+----
+
+== Global interface
+
+[source,pascal]
+----
+var DebugOverlay: TDebugOverlay;
+
+procedure DebugLog(const AMsg: string);
+procedure DebugLogFmt(const AFmt: string; const AArgs: array of const);
+----
+
+`DebugLog` and `DebugLogFmt` forward to `DebugOverlay.Log` / `DebugOverlay.LogFmt`.
+
+== Display
+
+The overlay paints a right-edge panel (`Width` columns wide) in green-on-black.
+Newer log lines appear at the bottom.
+Lines that exceed the panel width are truncated.
+The panel is drawn after the main application frame, so it is always on top.
+
+== Usage
+
+[source,pascal]
+----
+uses TermUI.Debug.Overlay;
+
+// Anywhere in the application:
+DebugLog('Starting render');
+DebugLogFmt('Cursor at (%d, %d)', [Row, Col]);
+
+// Toggle visibility with a key binding:
+Application.OnKeyDown := @HandleKey;
+
+procedure TMyForm.HandleKey(Sender: TObject; var Key: TKeyEvent);
+begin
+  if Key.Key = kcF12 then
+  begin
+    DebugOverlay.Toggle;
+    Key.Handled := True;
+  end;
+end;
+----
+
+== See also
+
+* <<application.adoc#,TermUI.Application>> — `OnPostPaint` hook used by the overlay

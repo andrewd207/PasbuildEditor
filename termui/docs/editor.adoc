@@ -5,7 +5,7 @@ link:index.adoc[← Index]
 
 == Overview
 
-`TTextEditor` is a multi-line text editor with pluggable syntax highlighting.
+`TTextEditor` is a multi-line text editor with pluggable syntax highlighting, selection, clipboard integration, and optional word wrap.
 In read-only mode the control scrolls without allowing edits.
 
 Syntax highlighting is provided by subclassing `TTextHighlighter` and assigning an instance to `TTextEditor.Highlighter`.
@@ -15,9 +15,11 @@ Syntax highlighting is provided by subclassing `TTextHighlighter` and assigning 
 [source,pascal]
 ----
 TTextHighlighter = class
+  constructor Create; virtual;
   procedure Prepare(ALines: TStrings); virtual;
   procedure GetSpans(ARow: Integer; const ALine: string;
     out ASpans: TTextSpanArray); virtual;
+  function Name: string; virtual;
 end;
 ----
 
@@ -27,13 +29,15 @@ Use it for multi-line state (code fences, block comments, tables).
 `GetSpans` is called per visible row.
 Return an array of `TTextSpan` records that will be applied over the plain text.
 
+`Name` returns the highlighter's display name (used by the registry).
+
 === TTextSpan
 
 [source,pascal]
 ----
 TTextSpan = record
-  Col:       Integer;   // 0-based byte offset into the line
-  Len:       Integer;   // byte length of the span
+  Col:       Integer;   // 0-based codepoint offset into the line
+  Len:       Integer;   // codepoint length of the span
   FG:        TColor;
   BG:        TColor;
   Underline: Boolean;
@@ -42,6 +46,45 @@ end;
 
 Spans may overlap; later spans in the array take precedence character by character.
 
+=== Highlighter registry
+
+Highlighters self-register in their unit's `initialization` section via `RegisterHighlighter`.
+The editor can then look them up by file extension or name.
+
+[source,pascal]
+----
+procedure RegisterHighlighter(AClass: TTextHighlighterClass;
+  const AExtensions: string);   // semicolon-separated, e.g. '.pas;.pp'
+
+function FindHighlighterForExt(const AExt: string): TTextHighlighter;
+function FindHighlighterByName(const AName: string): TTextHighlighter;
+procedure GetHighlighterNames(AList: TStrings);
+----
+
+== TTabMode
+
+[source,pascal]
+----
+TTabMode = (tmSpaces, tmChar);
+----
+
+`tmSpaces` — pressing Tab inserts `TabWidth` space characters.
+`tmChar`   — pressing Tab inserts a literal tab character.
+
+== TSelection
+
+[source,pascal]
+----
+TSelection = record
+  Active:    Boolean;
+  AnchorRow: Integer;   // 1-based
+  AnchorCol: Integer;   // 1-based
+end;
+----
+
+`Active = True` while a selection is being extended.
+The selection spans from (AnchorRow, AnchorCol) to the current cursor position.
+
 == TTextEditor
 
 Extends <<control.adoc#,TControl>>.
@@ -49,13 +92,27 @@ Extends <<control.adoc#,TControl>>.
 [source,pascal]
 ----
 TTextEditor = class(TControl)
-  property Lines:       TStrings;          // content; caller may populate directly
-  property ReadOnly:    Boolean;
-  property WordWrap:    Boolean;           // suppresses horizontal scroll
-  property Highlighter: TTextHighlighter;  // not owned by the editor
-  property CursorRow:   Integer;           // 1-based
-  property CursorCol:   Integer;           // 1-based
-  property OnChange:    TNotifyEvent;
+  { Bulk update — suppress repaint/highlight until EndUpdate }
+  procedure BeginUpdate;
+  procedure EndUpdate;
+
+  procedure Clear;
+  procedure ScrollToBottom;
+  procedure InsertText(const AText: string);
+  procedure CopyCurrentLine;
+
+  property Lines:                   TStrings;          // content; caller may populate directly
+  property ReadOnly:                Boolean;
+  property WordWrap:                Boolean;           // suppresses horizontal scroll
+  property CaptureTabs:             Boolean;           // default False; True = Tab key handled by editor
+  property TabMode:                 TTabMode;          // tmSpaces (default) or tmChar
+  property TabWidth:                Integer;           // default 2
+  property HighlightTrailingSpaces: Boolean;           // highlight trailing whitespace
+  property Highlighter:             TTextHighlighter;  // not owned by the editor
+  property CursorRow:               Integer;           // 1-based
+  property CursorCol:               Integer;           // 1-based
+  property Selection:               TSelection;        // current selection state
+  property OnChange:                TNotifyEvent;
 end;
 ----
 
@@ -66,10 +123,16 @@ end;
 | Key | Action
 
 | `Up` / `Down`
-| Scroll one row
+| Move cursor / scroll one row
+
+| `Left` / `Right`
+| Move cursor one codepoint
 
 | `PgUp` / `PgDn`
 | Scroll one page
+
+| `Home` / `End`
+| Start / end of current line
 
 | `Ctrl+Home`
 | Jump to first line
@@ -86,17 +149,8 @@ All read-only bindings plus:
 |===
 | Key | Action
 
-| `Left` / `Right`
-| Move cursor one character
-
-| `Home` / `End`
-| Start / end of current line
-
-| `Ctrl+Home` / `Ctrl+End`
-| First / last line
-
 | `Backspace` / `Delete`
-| Delete character
+| Delete character before / at cursor
 
 | `Enter`
 | Insert new line
@@ -104,8 +158,52 @@ All read-only bindings plus:
 | `Ctrl+K`
 | Kill to end of line
 
+| `Tab` (when CaptureTabs = True)
+| Insert spaces or tab char per TabMode
+
 | Printable char
 | Insert at cursor
+|===
+
+=== Selection key bindings
+
+[cols="1,3"]
+|===
+| Key | Action
+
+| `Shift+Left` / `Shift+Right`
+| Extend selection one codepoint
+
+| `Shift+Up` / `Shift+Down`
+| Extend selection one row
+
+| `Shift+Home` / `Shift+End`
+| Extend selection to line start / end
+
+| `Shift+Ctrl+Home` / `Shift+Ctrl+End`
+| Extend selection to document start / end
+
+| `Ctrl+A`
+| Select all
+|===
+
+=== Clipboard key bindings
+
+[cols="1,3"]
+|===
+| Key | Action
+
+| `Ctrl+C`
+| Copy selection (or current line if no selection) to clipboard
+
+| `Ctrl+X`
+| Cut selection to clipboard
+
+| `Ctrl+V`
+| Paste from clipboard at cursor
+
+| `kcBracketedPaste`
+| Bracketed paste from terminal (treated as Ctrl+V)
 |===
 
 === Syntax highlighting
@@ -122,5 +220,9 @@ See <<highlighter_asciidoc.adoc#,TAsciiDocHighlighter>> for a ready-to-use examp
 == See also
 
 * <<highlighter_asciidoc.adoc#,TermUI.Highlighter.AsciiDoc>> — AsciiDoc highlighter
+* <<highlighter_markdown.adoc#,TermUI.Highlighter.Markdown>> — Markdown highlighter
+* <<highlighter_pascal.adoc#,TermUI.Highlighter.Pascal>> — Pascal highlighter
+* <<highlighter_xml.adoc#,TermUI.Highlighter.XML>> — XML / HTML highlighter
 * <<lineeditor.adoc#,TermUI.Control.LineEditor>> — single-line input
-* <<label.adoc#,TermUI.Control.Label>> — static text display
+* <<textlabel.adoc#,TermUI.Control.TextLabel>> — static text display
+* <<clipboard.adoc#,TermUI.Clipboard>> — clipboard integration

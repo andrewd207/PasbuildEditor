@@ -7,7 +7,40 @@ link:index.adoc[← Index]
 
 `TermUI.Application` provides `TApplication`, the singleton that owns the form stack, runs the event loop, and coordinates repainting.
 
-The global instance is `Application` (declared in the unit).
+The global instance is `Application` (declared in the unit and created in its `initialization` section).
+
+== TDrawingChar
+
+The `TDrawingChar` enum names every drawing character the application uses for borders, scroll bars, check boxes, and other UI chrome.
+`Application.DrawingChar[dc]` returns the actual string for the current mode (Unicode or ASCII fallback).
+
+[source,pascal]
+----
+TDrawingChar = (
+  dcTopLeft, dcTopRight, dcBottomLeft, dcBottomRight,
+  dcHorizontal, dcVertical,
+  dcLeftT, dcRightT, dcTopT, dcBottomT, dcCross,
+  dcUpArrow, dcDownArrow,
+  dcFullBlock, dcScrollBar,
+  dcLeftBracket, dcRightBracket,
+  dcDropDown,
+  dcChevronRight,
+  dcArrowUp, dcArrowLeft, dcArrowRight, dcArrowDown,
+  dcTriangleRight, dcTriangleDown,
+  dcGutterBar,
+  dcFocusLeft, dcFocusRight,
+  dcBullet,
+  dcCheckBoxEmpty, dcCheckBoxChecked,
+  dcRadioEmpty, dcRadioChecked,
+  dcEllipsis,
+  dcProgressFull, dcProgressEmpty,
+  dcClose,
+  dcMenu,
+  dcSeparator
+);
+----
+
+`UseUnicodeBorders` (default `True` when the terminal supports it) selects between Unicode box-drawing glyphs and plain ASCII characters (`+`, `-`, `|`, etc.).
 
 == TApplication
 
@@ -21,6 +54,7 @@ TApplication = class
 
   procedure PushForm(AForm: TForm);
   procedure PopForm;
+  procedure ClearFormStack;
   function  ShowModal(AForm: TForm): Integer;
 
   { Peek management }
@@ -29,11 +63,20 @@ TApplication = class
   procedure TogglePeek(AForm: TForm);
   function  PeekVisible(AForm: TForm): Boolean;
 
-  property Terminated: Boolean;
-  property ActiveForm: TForm;
-  property OnKeyDown:  TKeyDownEvent;
-  property OnIdle:     TNotifyEvent;
-  property HelpKey:    TKeyCode;        // default kcF1; kcNone to disable
+  { Drawing helpers }
+  procedure DrawChar(ADC: TDrawingChar);
+  procedure RepeatChar(ADC: TDrawingChar; ACount: Integer);
+
+  property Terminated:         Boolean;
+  property ActiveForm:         TForm;
+  property FormStack:          array of TForm;     // read-only view
+  property OnKeyDown:          TKeyDownEvent;
+  property OnIdle:             TNotifyEvent;
+  property OnPostPaint:        TNotifyEvent;       // fired after every repaint
+  property OnShowException:    TExceptionEvent;    // override crash display
+  property HelpKey:            TKeyCode;           // default kcF1; kcNone = disable
+  property UseUnicodeBorders:  Boolean;
+  property DrawingChar[ADC: TDrawingChar]: string; // read-only
 end;
 ----
 
@@ -46,15 +89,18 @@ Each `ProcessMessages` cycle:
 . Calls `CheckSynchronize` (delivers <<timer.adoc#,TTimer>> and other `Synchronize` callbacks).
 . Reads a key (16 ms timeout — non-blocking if no input).
 . Dispatches the key or fires `OnIdle`.
-. Repaints if anything was invalidated.
+. Repaints if anything was invalidated; `OnPostPaint` fires after the repaint (used by <<debug_overlay.adoc#,TDebugOverlay>>).
 . Auto-pops any overlay form whose `ModalResult <> 0`.
+
+`Resume` re-enters the loop after an external suspension (e.g. spawning a subprocess that takes over the terminal).
 
 == Form stack
 
-The stack is a dynamic array; index `N-1` is the active form.
+The stack is a dynamic array accessible via `FormStack`; index `N-1` is the active form.
 
 `PushForm` adds a form to the top.
 `PopForm` removes the top form.
+`ClearFormStack` removes all forms (useful before switching major UI states).
 `ShowModal` is equivalent to `PushForm` + spin `ProcessMessages` + `PopForm`, returning `ModalResult`.
 
 === Repainting with overlays
@@ -83,6 +129,22 @@ Application.TogglePeek(FHelp);
 `ShowPeek` pushes if not already visible.
 `HidePeek` removes from anywhere in the stack.
 `TogglePeek` does one or the other.
+`PeekVisible` returns `True` if the form is currently in the stack.
+
+== Drawing helpers
+
+[source,pascal]
+----
+Application.DrawChar(dcTopLeft);           // write one drawing char at current cursor
+Application.RepeatChar(dcHorizontal, 20); // write 20 horizontal bar chars
+----
+
+These helpers read from `DrawingChar[]` internally so callers do not need to check `UseUnicodeBorders` themselves.
+
+== Exception handling
+
+`OnShowException` is set by <<crash_handler.adoc#,TermUI.Form.CrashHandler>> in its `initialization` to display a crash overlay dialog.
+Override it before calling `Run` if you need custom error display.
 
 == Resize handling
 
@@ -95,3 +157,5 @@ When the terminal is resized, `HandleResize` calls `SetBounds(1, 1, Term.Width, 
 * <<control.adoc#,TermUI.Control>> — TControl, IContainer
 * <<peek.adoc#,TermUI.Form.Peek>> — TPeekForm
 * <<timer.adoc#,TermUI.Timer>> — TTimer (uses CheckSynchronize delivery)
+* <<debug_overlay.adoc#,TermUI.Debug.Overlay>> — TDebugOverlay (hooks OnPostPaint)
+* <<crash_handler.adoc#,TermUI.Form.CrashHandler>> — crash dialog (hooks OnShowException)

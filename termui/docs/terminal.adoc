@@ -1,0 +1,149 @@
+= TermUI.Terminal
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TermUI.Terminal` defines the low-level terminal abstraction used by the entire library.
+It declares key-code and color enumerations, the double-buffered `TTerminal` class, the drawing-character enum, and the platform factory mechanism.
+
+The global `Term` function returns the singleton `TTerminal` instance registered by the platform back-end.
+
+== TKeyCode
+
+Representative values (not exhaustive):
+
+[source,pascal]
+----
+TKeyCode = (
+  kcNone,
+  kcUp, kcDown, kcLeft, kcRight,
+  kcHome, kcEnd, kcPgUp, kcPgDn,
+  kcInsert, kcDelete, kcBackspace, kcEnter, kcEscape, kcTab,
+  kcShiftTab,
+  kcF1..kcF12,
+  kcCtrlA..kcCtrlZ,
+  kcShiftUp, kcShiftDown, kcShiftLeft, kcShiftRight,
+  kcShiftHome, kcShiftEnd,
+  kcCtrlHome, kcCtrlEnd,
+  kcCtrlLeft, kcCtrlRight,
+  kcCtrlShiftHome, kcCtrlShiftEnd,
+  kcCtrlTab,
+  kcBracketedPaste  // paste event carrying pasted text
+);
+----
+
+== TKeyEvent
+
+[source,pascal]
+----
+TKeyEvent = record
+  Key:       TKeyCode;
+  Ch:        TUTF8Char;    // non-empty for printable characters (kcNone key)
+  PasteText: string;       // non-empty for kcBracketedPaste
+  Handled:   Boolean;
+end;
+----
+
+== TColor
+
+[source,pascal]
+----
+TColor = (
+  clDefault,
+  clBlack, clRed, clGreen, clYellow, clBlue, clMagenta, clCyan, clWhite,
+  clBrightBlack, clBrightRed, clBrightGreen, clBrightYellow,
+  clBrightBlue, clBrightMagenta, clBrightCyan, clBrightWhite,
+  clBackground  // terminal background color
+);
+----
+
+== TScreenCell
+
+[source,pascal]
+----
+TScreenCell = record
+  Ch:        TUTF8Char;
+  FG, BG:    TColor;
+  Underline: Boolean;
+end;
+----
+
+The double buffer stores two `TScreenCell` grids (back and front).
+`FlushOutput` walks the grid and emits ANSI sequences only for cells that differ.
+
+== TTerminal
+
+[source,pascal]
+----
+TTerminal = class
+  { Cursor positioning (1-based) }
+  procedure GotoXY(AX, AY: Integer);
+
+  { Output }
+  procedure WriteStr(const S: string);
+  procedure ClearScreen;
+  procedure ClearToEOL;
+
+  { Color / attributes }
+  procedure SetFG(AColor: TColor);
+  procedure SetBG(AColor: TColor);
+  procedure SetUnderline(AOn: Boolean);
+  procedure ResetColors;
+
+  { Buffer management }
+  procedure FlushOutput;
+  procedure FlushRow(ARow: Integer);
+  procedure InvalidateFront;
+
+  { Dirty-row hints (optional optimization) }
+  procedure HintDirtyRow(ARow: Integer);
+  function  TakeDirtyRowHint: Integer;
+
+  { Cursor visibility }
+  procedure PlaceCursor(AX, AY: Integer);
+  procedure ShowCursor;
+  procedure HideCursor;
+
+  { Bracketed paste }
+  procedure EnableBracketedPaste;
+
+  { Input }
+  procedure DiscardPendingInput;
+
+  property Width:  Integer;
+  property Height: Integer;
+end;
+----
+
+=== Double-buffer rendering
+
+All `WriteStr` / `GotoXY` calls write into the *back buffer*.
+`FlushOutput` compares back vs front, emits ANSI escape sequences only for changed cells, then copies back → front.
+
+`InvalidateFront` marks the entire front buffer as stale, forcing a full repaint on the next `FlushOutput`.
+
+=== Dirty-row hints
+
+`HintDirtyRow(ARow)` records a row that is known to have changed.
+`TakeDirtyRowHint` returns the hint and clears it.
+Used internally to avoid full-screen scans when only one row changed (e.g. cursor movement in the editor).
+
+== Platform factory
+
+[source,pascal]
+----
+type TTerminalFactory = function: TTerminal;
+
+procedure RegisterTerminalFactory(AFactory: TTerminalFactory);
+function  Term: TTerminal;
+----
+
+A platform unit (e.g. `TermUI.Terminal.Unix`) calls `RegisterTerminalFactory` in its `initialization` section.
+The main code calls `Term` to get the singleton; it is created lazily on first access.
+
+== See also
+
+* <<application.adoc#,TermUI.Application>> — drives FlushOutput each cycle
+* <<stringutils.adoc#,TermUI.StringUtils>> — UTF-8 helpers used throughout

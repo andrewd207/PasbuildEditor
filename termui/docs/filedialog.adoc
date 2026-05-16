@@ -6,7 +6,7 @@ link:index.adoc[← Index]
 == Overview
 
 `TFileDialog` is a full-filesystem file picker that supports open, save, and directory-select modes.
-It renders a two-column list (name + condensed size), with live text filtering, hidden-file toggle, and symlink coloring.
+It renders a two-column list (name + condensed size), with live inline text filtering, hidden-file toggle, and symlink coloring.
 
 Convenience functions `RunOpenDialog`, `RunSaveDialog`, and `RunDirDialog` are provided for one-liner usage.
 
@@ -26,28 +26,31 @@ Extends <<forms.adoc#,TForm>>.
 TFileDialog = class(TForm)
   procedure SetParams(const AInitialDir: string; AMode: TFileDialogMode;
     const AInitialFilename: string = '');
-  function RunModal: Boolean;   // True = accepted
+  function  RunModal: Boolean;   // True = accepted
 
-  property FileFilter:  string;   // glob(s) separated by ';', default '*'
-  property Accepted:    Boolean;
-  property ResultPath:  string;
+  procedure AddFilter(const AName, APattern: string);
+
+  property FileFilter:      string;    // active glob(s), semicolon-separated; default '*'
+  property WantExtensions:  Boolean;   // show extension in file list (default True)
+  property Accepted:        Boolean;
+  property ResultPath:      string;
 end;
 ----
+
+Call `SetParams` then `RunModal`, or use one of the convenience wrappers below.
 
 == Convenience functions
 
 [source,pascal]
 ----
-function RunOpenDialog(var APath: string;
-  const AInitialDir: string = '';
-  const AFilter: string = '*'): Boolean;
+function RunOpenDialog(const AInitialDir: string; var APath: string;
+  const ATitle: string = 'Open'): Boolean;
 
-function RunSaveDialog(var APath: string;
-  const AInitialDir: string = '';
-  const AFilter: string = '*'): Boolean;
+function RunSaveDialog(const AInitialDir: string; var APath: string;
+  const ATitle: string = 'Save'): Boolean;
 
-function RunDirDialog(var APath: string;
-  const AInitialDir: string = ''): Boolean;
+function RunDirDialog(const AInitialDir: string; var APath: string;
+  const ATitle: string = 'Select Directory'): Boolean;
 ----
 
 == File list
@@ -56,19 +59,20 @@ function RunDirDialog(var APath: string;
 
 ----
 /home/user/src          [*.pas;*.pp]
-────────────────────────────────────
-..                              <dir>
-  src/                          <dir>
-  readme.adoc                  1.2K
-  main.pas                      34K
-────────────────────────────────────
-  /filter/
+────────────────────────────────────────
+..
+src/
+readme.adoc                         1.2K
+main.pas                             34K
+────────────────────────────────────────
+Filename: [main.pas               ]
+[*.pas;*.pp ▼]
 ----
 
 * Directories are listed before files, both groups sorted alphabetically.
-* Size column (`SIZE_COL_W = 6`) is right-aligned; blank for directories.
-* The current filter glob is shown in the path row: `[*.pas;*.pp]`.
-* A live text filter appears on the separator row as `/text/`.
+* Size column is right-aligned; blank for directories.
+* The active filter glob is shown in brackets in the path row.
+* A live inline search overlays the `..` row when the user types in the file list.
 
 === Condensed sizes
 
@@ -104,23 +108,27 @@ Entries with `faSymLink` in `TSearchRec.Attr` are rendered in `clBrightYellow`.
 | `Up` / `Down`
 | Move selection
 
-| `Enter`
+| `Enter` / `Right`
 | Enter directory or accept file
 
+| `Left`
+| Navigate to parent directory
+
 | `Backspace`
-| Remove last filter char; if filter is empty, navigate to parent directory
+| Remove last inline-filter char; if filter is empty, navigate to parent directory
 
 | `Tab`
 | Switch focus to filename field (fdOpen / fdSave)
 
-| `h` / `H`
+| `H` / `h`
 | Toggle hidden files
 
 | `Escape`
 | Cancel
 |===
 
-Typing any printable character appends to the live filter.
+Typing any printable character appends to the live inline filter.
+The filter overlay appears on the `..` row; clearing it restores normal display.
 
 === Filename field focus (fdOpen / fdSave)
 
@@ -140,6 +148,38 @@ Typing any printable character appends to the live filter.
 
 Standard <<lineeditor.adoc#,TTextEdit>> editing keys apply.
 
+=== Filter combo focus
+
+[cols="1,3"]
+|===
+| Key | Action
+
+| `Tab`
+| Switch focus back to file list
+
+| `Enter` / `Space`
+| Open filter selector drop-down
+
+| `Escape`
+| Cancel
+|===
+
+== AddFilter
+
+[source,pascal]
+----
+Dialog.AddFilter('Pascal files', '*.pas;*.pp');
+Dialog.AddFilter('All files',    '*');
+----
+
+Adds a named entry to the filter combo box.
+The first call also sets `FileFilter` to that pattern.
+
+== WantExtensions
+
+When `WantExtensions` is `False`, file extensions are stripped from the display names in the list.
+Default is `True`.
+
 == FileFilter
 
 `FileFilter` is a semicolon-separated list of globs: `*.pas;*.pp`.
@@ -150,4 +190,5 @@ Directories are always shown regardless of the filter.
 
 * <<forms.adoc#,TermUI.Forms>> — TForm base
 * <<lineeditor.adoc#,TermUI.Control.LineEditor>> — filename field
+* <<combobox.adoc#,TermUI.Control.ComboBox>> — filter combo
 * <<application.adoc#,TermUI.Application>> — ShowModal

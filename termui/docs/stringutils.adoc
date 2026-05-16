@@ -1,0 +1,148 @@
+= TermUI.StringUtils
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TermUI.StringUtils` provides UTF-8–aware string helpers used throughout the library.
+All index parameters use *0-based codepoint* indexing unless otherwise noted.
+
+The unit defines:
+
+* Free functions that operate on `String` or `RawByteString` using 0-based codepoint indices.
+* Type helpers `TStringHelper` and `TRawByteStringHelper` that expose an object-style API on the built-in string types.
+* The `TUTF8Char` alias and `CStrLow` constant.
+
+== Constants and types
+
+[source,pascal]
+----
+type TUTF8Char = RawByteString;   // one UTF-8 codepoint stored as a raw byte string
+
+const CStrLow = 0;                // lowest valid codepoint index (for clarity)
+----
+
+== Free functions
+
+=== CopyNeutral
+
+[source,pascal]
+----
+function CopyNeutral(const S: string; AFrom, ACount: Integer): string;
+----
+
+Returns `ACount` codepoints starting at 0-based offset `AFrom`.
+
+=== PosNeutral
+
+[source,pascal]
+----
+function PosNeutral(const ASubStr, S: string): Integer;
+function PosNeutral(const ASubStr, S: string; AOffset: Integer): Integer;
+----
+
+Returns the 0-based codepoint position of `ASubStr` in `S`, or `-1` if not found.
+The two-argument overload searches from the beginning; the three-argument overload searches from `AOffset`.
+
+=== DeleteNeutral
+
+[source,pascal]
+----
+procedure DeleteNeutral(var S: string; AFrom, ACount: Integer);
+----
+
+Deletes `ACount` codepoints starting at 0-based offset `AFrom`.
+
+=== InsertNeutral
+
+[source,pascal]
+----
+procedure InsertNeutral(const ASubStr: string; var S: string; AAt: Integer);
+----
+
+Inserts `ASubStr` at 0-based codepoint position `AAt`.
+
+=== CharFromIndex
+
+[source,pascal]
+----
+function CharFromIndex(const S: string; AIndex: Integer): TUTF8Char;
+----
+
+Returns the single UTF-8 codepoint at 0-based index `AIndex`.
+
+=== UTF8SeqLen
+
+[source,pascal]
+----
+function UTF8SeqLen(AFirstByte: Byte): Integer;
+----
+
+Returns the byte length of a UTF-8 sequence given its first byte (1–4).
+
+=== UTF8VisualLen
+
+[source,pascal]
+----
+function UTF8VisualLen(const S: string): Integer;
+----
+
+Returns the number of UTF-8 codepoints in `S` (i.e. visual width for monospace terminals, ignoring combining characters).
+
+=== CharIsOneOf
+
+[source,pascal]
+----
+function CharIsOneOf(const ACh: TUTF8Char; const ASet: string): Boolean;
+----
+
+Returns `True` if the single codepoint `ACh` appears anywhere in `ASet`.
+
+== TStringHelper
+
+Type helper for `String`:
+
+[source,pascal]
+----
+type TStringHelper = type helper for String
+  property Index[AIndex: Integer]: TUTF8Char read ...; // 0-based codepoint access
+  property Chars[AIndex: Integer]: TUTF8Char read ...; // alias for Index
+  property Length: Integer read ...;   // codepoint count
+  property Size:   Integer read ...;   // byte length
+  function Copy(AFrom, ACount: Integer): string;
+  procedure Delete(AFrom, ACount: Integer);
+end;
+----
+
+Example:
+
+[source,pascal]
+----
+var S: string;
+S := 'héllo';
+WriteLn(S.Length);          // 5 codepoints
+WriteLn(S.Index[1]);        // 'é'
+WriteLn(S.Copy(1, 3));      // 'éll'
+----
+
+== TRawByteStringHelper
+
+Identical interface for `RawByteString`:
+
+[source,pascal]
+----
+type TRawByteStringHelper = type helper for RawByteString
+  property Index[AIndex: Integer]: TUTF8Char read ...;
+  property Chars[AIndex: Integer]: TUTF8Char read ...;
+  property Length: Integer read ...;
+  property Size:   Integer read ...;
+  function Copy(AFrom, ACount: Integer): RawByteString;
+  procedure Delete(AFrom, ACount: Integer);
+end;
+----
+
+== See also
+
+* <<terminal.adoc#,TermUI.Terminal>> — uses TUTF8Char for screen cells
+* <<editor.adoc#,TermUI.Control.Editor>> — 0-based codepoint spans in TTextSpan

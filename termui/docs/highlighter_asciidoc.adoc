@@ -10,6 +10,8 @@ link:index.adoc[← Index]
 `Prepare` does a single full-document pass to classify every line (handling multi-line code blocks and tables).
 `GetSpans` returns color spans for one line in O(1) using the pre-computed classification.
 
+The highlighter is automatically registered for `.adoc` and `.asciidoc` extensions in its `initialization` section.
+
 == Color scheme
 
 [cols="1,2,1"]
@@ -34,7 +36,7 @@ link:index.adoc[← Index]
 
 | Code block body
 | `clBrightBlack`
-| Between `----` fences
+| Between `----` fences; or delegated to embedded highlighter
 
 | Code fence / rule / comment / attribute / table
 | `clBrightBlack`
@@ -102,6 +104,13 @@ link:index.adoc[← Index]
 
 Multi-line state (`InCode`, `InTable`) is tracked across the linear pass so `GetSpans` never needs to rescan.
 
+== Embedded highlighters
+
+When a `[source,pascal]` (or `[source,pas]` / `[source,objectpascal]`) attribute line precedes a `----` code fence, `Prepare` registers the Pascal highlighter as an embedded delegate.
+`GetSpans` then calls `TPascalHighlighter.GetSpans` for each line inside that fence instead of rendering it in plain `clBrightBlack`.
+
+Other language tags produce no embedded highlighter (default dim rendering).
+
 == Inline markup
 
 `AddInlineSpans` scans paragraphs and bullet text character by character, toggling `InBold`, `InItal`, `InMono` on `*`, `_`, `` ` ``, `+` delimiters.
@@ -122,3 +131,5 @@ Editor.Lines.LoadFromFile('readme.adoc');
 == See also
 
 * <<editor.adoc#,TermUI.Control.Editor>> — TTextEditor, TTextHighlighter, TTextSpan
+* <<highlighter_pascal.adoc#,TermUI.Highlighter.Pascal>> — embedded Pascal highlighter
+* <<highlighter_markdown.adoc#,TermUI.Highlighter.Markdown>> — Markdown highlighter

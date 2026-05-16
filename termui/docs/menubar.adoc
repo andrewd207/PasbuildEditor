@@ -1,0 +1,126 @@
+= TermUI.MenuBar
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TermUI.MenuBar` implements a traditional top-of-screen menu bar.
+`TMenuBar` is an `Overlay = True` form anchored to row 1.
+Each top-level entry (`TMenuBarItem`) has an accelerator character and owns a list of `TMenuItem` items (from <<menu.adoc#,TermUI.Menu>>).
+
+Pressing the accelerator key (with or without Alt, depending on terminal support) opens the corresponding drop-down panel.
+
+== TMenuBarItem
+
+[source,pascal]
+----
+TMenuBarItem = class
+  property Caption:  string;
+  property Accel:    Char;      // accelerator character (derived from Caption)
+  property AccelIdx: Integer;   // 0-based index of the accelerator char in Caption
+  property Items:    TMenuItemList;  // owned
+end;
+----
+
+Caption parsing: the first character of `Caption` that is prefixed with `&` becomes the `Accel` character.
+If no `&` is present, the first character is used.
+
+== TMenuBar
+
+Extends <<forms.adoc#,TForm>> with `Overlay = True`.
+
+[source,pascal]
+----
+TMenuBar = class(TForm)
+  function AddItem(const ACaption: string;
+    AItems: TMenuItemList): TMenuBarItem;
+
+  { Open the drop-down for the item whose Accel matches ACh.
+    Returns True if a match was found. }
+  function ActivateAccel(ACh: Char): Boolean;
+end;
+----
+
+The menu bar paints itself on row 1, rendering each item's caption with its accelerator underlined.
+The active item (when a drop-down is open) is highlighted.
+
+== TMenuBarDropDown
+
+An internal modal overlay shown when a top-level item is activated.
+
+[cols="1,3"]
+|===
+| Key | Action
+
+| `Up` / `Down`
+| Move highlight (skips separators and headers)
+
+| `Enter`
+| Confirm item; fires item `Action` event
+
+| `Left`
+| Close and activate the previous top-level item
+
+| `Right`
+| Close and activate the next top-level item
+
+| `Escape`
+| Close without selecting
+
+| `→` on `mikSubmenu` item
+| Open sub-panel to the right
+|===
+
+=== Submenu panel
+
+`mikSubmenu` items open a secondary panel beside the drop-down.
+Navigation is the same as the primary drop-down.
+`Escape` or `Left` collapses the sub-panel and returns focus to the parent.
+
+== ExitDir
+
+`TMenuBarDropDown.ExitDir` communicates how the drop-down was closed:
+
+[cols="1,2"]
+|===
+| Value | Meaning
+
+| `0`
+| Item selected (or Escape with no selection)
+
+| `-1`
+| User pressed `Left` → activate previous top-level item
+
+| `+1`
+| User pressed `Right` → activate next top-level item
+
+| `2`
+| Escape with no action
+|===
+
+`TMenuBar` reads `ExitDir` after each drop-down closes to decide whether to open an adjacent menu.
+
+== Example
+
+[source,pascal]
+----
+var MenuBar: TMenuBar;
+    FileItems: TMenuItemList;
+begin
+  FileItems := TMenuItemList.Create;
+  FileItems.Add(TMenuItem.Create('Open', 'open', ''));
+  FileItems.Add(TMenuItem.CreateSeparator);
+  FileItems.Add(TMenuItem.Create('Quit', 'quit', ''));
+
+  MenuBar := TMenuBar.Create;
+  MenuBar.AddItem('&File', FileItems);
+  Application.ShowPeek(MenuBar);
+end;
+----
+
+== See also
+
+* <<menu.adoc#,TermUI.Menu>> — TMenuItem, TMenu
+* <<forms.adoc#,TermUI.Forms>> — TForm base (Overlay = True)
+* <<application.adoc#,TermUI.Application>> — ShowPeek / TogglePeek

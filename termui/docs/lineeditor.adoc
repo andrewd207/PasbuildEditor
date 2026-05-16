@@ -83,6 +83,6 @@ Edit.OnAccept    := @DoSearch;
 
 == See also
 
-* <<label.adoc#,TermUI.Control.Label>> — static text
+* <<textlabel.adoc#,TermUI.Control.TextLabel>> — static text
 * <<editor.adoc#,TermUI.Control.Editor>> — multi-line text editor
 * <<filedialog.adoc#,TermUI.Form.FileDialog>> — uses TTextEdit for the filename field

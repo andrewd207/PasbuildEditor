@@ -1,0 +1,69 @@
+= TermUI.Highlighter.XML
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TXMLHighlighter` implements <<editor.adoc#TTextHighlighter,TTextHighlighter>> to provide XML / HTML syntax highlighting for <<editor.adoc#,TTextEditor>>.
+
+`Prepare` builds a per-line state array to track multi-line constructs (comments and CDATA sections).
+`GetSpans` uses that state for accurate single-line span generation.
+
+The highlighter is automatically registered for the following extensions in its `initialization` section:
+`.xml`, `.html`, `.htm`, `.xhtml`, `.svg`, `.xsl`, `.xslt`, `.rss`, `.atom`, `.plist`.
+
+== Color scheme
+
+[cols="1,2"]
+|===
+| Token | Color
+
+| Tag names (`<tag>`, `</tag>`, `<tag/>`)
+| `clBrightCyan`
+
+| Attribute names
+| `clYellow`
+
+| Attribute values (`"…"` / `'…'`)
+| `clGreen`
+
+| XML / HTML comments (`<!-- … -->`)
+| `clBrightBlack`
+
+| CDATA sections (`<![CDATA[ … ]]>`)
+| `clBrightBlack`
+
+| Processing instructions (`<?…?>`)
+| `clMagenta`
+
+| Everything else
+| `clDefault`
+|===
+
+== Multi-line state
+
+`FStates[]` records the parser context at the end of each line:
+
+[cols="1,2"]
+|===
+| State | Meaning
+
+| `lsNormal`
+| Normal content
+
+| `lsComment`
+| Inside a `<!-- … -->` comment
+
+| `lsCDATA`
+| Inside a `<![CDATA[ … ]]>` section
+|===
+
+`Prepare` fills the array in one forward pass.
+`GetSpans` reads `FStates[ARow - 1]` to know the starting context.
+
+== See also
+
+* <<editor.adoc#,TermUI.Control.Editor>> — TTextEditor, TTextHighlighter, TTextSpan
+* <<highlighter_asciidoc.adoc#,TermUI.Highlighter.AsciiDoc>> — can embed the XML highlighter
+* <<highlighter_markdown.adoc#,TermUI.Highlighter.Markdown>> — can embed the XML highlighter

@@ -1,0 +1,61 @@
+= TermUI.Form.CrashHandler
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TermUI.Form.CrashHandler` provides `TCrashForm`, a full-screen overlay dialog that intercepts unhandled exceptions and displays them with the stack trace.
+It registers itself as `Application.OnShowException` in its `initialization` section.
+
+== TCrashForm
+
+Extends <<forms.adoc#,TForm>> with `Overlay = True`.
+
+The form is a centered dialog with a 2-cell margin on every side.
+It contains a read-only, word-wrapped `TTextEditor` that shows:
+
+* Exception class name.
+* Exception message.
+* Stack frames collected via `BacktraceStrFunc`.
+
+[source,pascal]
+----
+function ShowCrashDialog(E: Exception): Boolean;
+----
+
+Displays the crash dialog for exception `E`.
+Returns `True` if the user chose to continue (key `C`), `False` if they chose to quit (`Q`, `Escape`).
+
+=== Key bindings
+
+[cols="1,3"]
+|===
+| Key | Action
+
+| `C`
+| Continue — close dialog and attempt to resume
+
+| `Q` / `Escape`
+| Quit — calls `Application.Terminate`
+
+| `Ctrl+C`
+| Copy crash text to clipboard
+
+| `Up` / `Down` / `PgUp` / `PgDn`
+| Scroll the crash text
+|===
+
+== Integration
+
+No setup is required.
+Simply add `TermUI.Form.CrashHandler` to the `uses` clause (or to the project's main `.pas` file).
+The `initialization` section hooks `Application.OnShowException` automatically.
+
+To override the crash handler with a custom one, assign `Application.OnShowException` *after* the unit has initialized.
+
+== See also
+
+* <<application.adoc#,TermUI.Application>> — `OnShowException` property
+* <<editor.adoc#,TermUI.Control.Editor>> — `TTextEditor` used for crash text display
+* <<clipboard.adoc#,TermUI.Clipboard>> — Ctrl+C copies the crash text

@@ -1,0 +1,82 @@
+= TermUI.PathPicker
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TermUI.PathPicker` provides `RunPathPicker`, a live-filter dialog for picking a file or directory path relative to a base directory.
+The dialog recursively scans from the base directory and lets the user browse and filter the results.
+
+== RunPathPicker
+
+[source,pascal]
+----
+function RunPathPicker(const ABaseDir, APrompt: string;
+  ADirsOnly: Boolean;
+  var APath: string): Boolean;
+----
+
+[cols="1,3"]
+|===
+| Parameter | Description
+
+| `ABaseDir`
+| Root directory for the recursive scan
+
+| `APrompt`
+| Dialog title
+
+| `ADirsOnly`
+| When `True`, only directories are listed; files are hidden
+
+| `APath`
+| In: initial selection (may be empty). Out: chosen path (relative to `ABaseDir`)
+|===
+
+Returns `True` if the user confirmed a selection.
+
+=== Directory creation
+
+When `ADirsOnly = True` and the user types a path that does not exist, the dialog offers to create the directory.
+A confirmation prompt is shown before any directories are created.
+
+== Key bindings
+
+[cols="1,3"]
+|===
+| Key | Action
+
+| `Up` / `Down`
+| Move highlight in the filtered list
+
+| `Enter`
+| Confirm highlighted path
+
+| `Escape`
+| Cancel
+
+| Printable char
+| Append to filter text; narrows list in real time
+
+| `Backspace`
+| Remove last filter character
+|===
+
+== Example
+
+[source,pascal]
+----
+var Path: string;
+begin
+  Path := '';
+  if RunPathPicker('/home/user/projects', 'Select source directory',
+    True, Path) then
+    WriteLn('Selected: ', Path);
+end;
+----
+
+== See also
+
+* <<filedialog.adoc#,TermUI.Form.FileDialog>> — full file-system dialog (open / save / dir)
+* <<filtered_picker.adoc#,TermUI.FilteredPicker>> — generic live-filter picker

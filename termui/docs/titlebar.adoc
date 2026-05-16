@@ -1,0 +1,43 @@
+= TermUI.Control.TitleBar
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TTitleBar` is a non-focusable, one-row control that renders an application title bar.
+It displays a left-aligned title and an optional right-aligned string, padded to fill its full width.
+
+== TTitleBar
+
+Extends <<control.adoc#,TControl>>.
+
+[source,pascal]
+----
+TTitleBar = class(TControl)
+  property Title:     string;
+  property RightText: string;
+end;
+----
+
+`Focusable` is `False`; the title bar never receives keyboard focus.
+
+Default colors: `clBrightWhite` on `clBlue`.
+
+The control pads the space between `Title` and `RightText` with spaces to fill `Width` exactly.
+
+== Example
+
+[source,pascal]
+----
+TitleBar := TTitleBar.Create;
+TitleBar.SetBounds(1, 1, Term.Width, 1);
+TitleBar.Title     := 'MyApp v1.0';
+TitleBar.RightText := 'F1=Help';
+Form.AddChild(TitleBar);
+----
+
+== See also
+
+* <<control.adoc#,TermUI.Control>> — TControl base
+* <<menubar.adoc#,TermUI.MenuBar>> — menu bar (also anchors to row 1)

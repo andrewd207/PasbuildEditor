@@ -1,0 +1,77 @@
+= TermUI.Clipboard
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TermUI.Clipboard` provides a thin abstraction over the system clipboard.
+A platform unit (e.g. `TermUI.Clipboard.Platform`) registers an implementation in its `initialization` section via `RegisterClipboardPlatform`.
+
+The global `Clipboard` instance is created automatically; callers use it without caring about the platform.
+
+== TClipboardPlatform
+
+Abstract base for platform implementations:
+
+[source,pascal]
+----
+TClipboardPlatform = class
+  procedure SetText(const AText: string); virtual; abstract;
+  function  GetText: string; virtual; abstract;
+  function  Available: Boolean; virtual; abstract;
+end;
+----
+
+== TClipboard
+
+[source,pascal]
+----
+TClipboard = class
+  procedure SetText(const AText: string);
+  function  GetText: string;
+
+  procedure AttachPlatform(APlatform: TClipboardPlatform);
+  function  HasPlatform: Boolean;
+
+  property Text: string;   // read/write shortcut for GetText/SetText
+end;
+----
+
+`HasPlatform` returns `False` when no platform implementation has been registered (e.g. running inside a terminal that exposes no clipboard API).
+In that case `GetText` returns `''` and `SetText` is a no-op.
+
+== Global variable
+
+[source,pascal]
+----
+var Clipboard: TClipboard;
+----
+
+Created in `initialization`; destroyed in `finalization`.
+
+== RegisterClipboardPlatform
+
+[source,pascal]
+----
+procedure RegisterClipboardPlatform(APlatform: TClipboardPlatform);
+----
+
+Called by the platform unit.
+`APlatform` is owned by `TClipboard` after registration.
+
+== Usage
+
+[source,pascal]
+----
+// Read
+S := Clipboard.Text;
+
+// Write
+Clipboard.Text := Selection;
+----
+
+== See also
+
+* <<editor.adoc#,TermUI.Control.Editor>> — Ctrl+C/X/V use the clipboard
+* <<crash_handler.adoc#,TermUI.Form.CrashHandler>> — Ctrl+C copies crash text

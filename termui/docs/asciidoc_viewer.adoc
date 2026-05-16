@@ -1,0 +1,107 @@
+= TermUI.AsciiDocViewer
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TermUI.AsciiDocViewer` provides `TAsciiDocViewer`, a read-only AsciiDoc document browser with a split TOC pane and inline markup rendering.
+
+The viewer is a `TForm` subclass shown modally.
+Call `SetContent` then `Application.ShowModal`.
+
+== TAsciiDocViewer
+
+Extends <<forms.adoc#,TForm>>.
+
+[source,pascal]
+----
+TAsciiDocViewer = class(TForm)
+  procedure SetContent(ARawLines: TStrings;
+    const ATitle: string = '';
+    const AContextKey: string = '');
+end;
+----
+
+`ARawLines` is the raw AsciiDoc source (not owned).
+`ATitle` is shown in the form border.
+`AContextKey` is stored for caller use (e.g. to track which help topic is visible); the viewer does not interpret it.
+
+== Layout
+
+----
+┌──────────────────────────────────────────────────┐
+│ TOC (22 cols) │ Content                          │
+│               │                                  │
+│  = Section 1  │  = Section 1                     │
+│  == Sub 1.1   │                                  │
+│  = Section 2  │  Text paragraph...               │
+│               │                                  │
+│               │  == Sub 1.1                      │
+└──────────────────────────────────────────────────┘
+----
+
+The TOC pane is 22 columns wide.
+A single-character separator column divides the two panes.
+The content pane fills the rest.
+Both panes scroll independently.
+
+== Key bindings
+
+[cols="1,3"]
+|===
+| Key | Action
+
+| `Tab` / `←` / `→`
+| Switch focus between TOC pane and content pane
+
+| `Up` / `Down`
+| Scroll focused pane one row
+
+| `PgUp` / `PgDn`
+| Scroll focused pane one page
+
+| `Enter` (in TOC)
+| Jump content pane to the selected heading
+
+| `Esc` / `Q`
+| Close viewer (ModalResult = 1)
+
+| `F1`
+| Close viewer (same as Esc; F1 is typically assigned as the help key)
+|===
+
+== Inline markup rendering
+
+The viewer renders AsciiDoc inline markup:
+
+[cols="1,2"]
+|===
+| Markup | Rendering
+
+| `*word*`
+| `clBrightWhite` (bold-style)
+
+| `_word_`
+| underline
+
+| `` `word` `` / `+word+`
+| `clCyan` (monospace-style)
+|===
+
+Code blocks (between `----` fences) are rendered in `clBrightBlack`.
+Headings use the same color scheme as <<highlighter_asciidoc.adoc#,TAsciiDocHighlighter>>.
+
+== Display line kinds
+
+Internally the viewer classifies each processed line as a `TDisplayLineKind`:
+
+`dlkBlank`, `dlkH1`, `dlkH2`, `dlkH3`, `dlkH4`, `dlkPara`, `dlkCode`, `dlkRule`, `dlkBullet`.
+
+TOC entries (`TTOCEntry`) are extracted from heading lines during `SetContent`.
+
+== See also
+
+* <<highlighter_asciidoc.adoc#,TermUI.Highlighter.AsciiDoc>> — same color scheme, used in the editor
+* <<forms.adoc#,TermUI.Forms>> — TForm base
+* <<application.adoc#,TermUI.Application>> — ShowModal

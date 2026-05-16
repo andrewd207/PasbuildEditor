@@ -1,0 +1,96 @@
+= TermUI.FilteredPicker
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TermUI.FilteredPicker` provides a live-filter selection dialog.
+The user types to narrow a list of items and then confirms a selection.
+
+== TFilteredPickerItem
+
+[source,pascal]
+----
+TFilteredPickerItem = record
+  Label_: string;   // displayed and returned as result
+  Desc:   string;   // shown alongside label; searched but not returned
+end;
+----
+
+== TFilteredPicker
+
+Extends <<forms.adoc#,TForm>>.
+
+[source,pascal]
+----
+TFilteredPicker = class(TForm)
+  procedure SetItems(const AItems: array of TFilteredPickerItem;
+    const AInitialValue: string = '');
+  function RunModal: Integer;   // returns selected index or -1
+
+  property Accepted:  Boolean;
+  property Result_:   string;   // Label_ of the confirmed item
+end;
+----
+
+=== Two-step confirmation
+
+* First `Enter`: stages the currently highlighted item (highlights it in a distinct color).
+* Second `Enter` (on the same item): confirms the selection and closes the dialog.
+
+This prevents accidental selection when the user is still typing.
+
+== Convenience function
+
+[source,pascal]
+----
+function RunFilteredPicker(const ATitle: string;
+  const AItems: array of TFilteredPickerItem;
+  out AResult: string;
+  const AInitialValue: string = ''): Boolean;
+----
+
+Returns `True` if the user confirmed a selection; `AResult` receives the `Label_` of the chosen item.
+
+== Key bindings
+
+[cols="1,3"]
+|===
+| Key | Action
+
+| `Up` / `Down`
+| Move highlight
+
+| `Enter`
+| Stage (first press) / confirm (second press on same item)
+
+| `Escape`
+| Cancel
+
+| Printable char
+| Append to filter; resets staged item
+|===
+
+== Example
+
+[source,pascal]
+----
+var
+  Items: array of TFilteredPickerItem;
+  Result: string;
+begin
+  SetLength(Items, 3);
+  Items[0].Label_ := 'Alpha';   Items[0].Desc := 'First option';
+  Items[1].Label_ := 'Beta';    Items[1].Desc := 'Second option';
+  Items[2].Label_ := 'Gamma';   Items[2].Desc := 'Third option';
+  if RunFilteredPicker('Choose', Items, Result) then
+    WriteLn('Selected: ', Result);
+end;
+----
+
+== See also
+
+* <<forms.adoc#,TermUI.Forms>> — TForm base
+* <<path_picker.adoc#,TermUI.PathPicker>> — filesystem path picker with similar UX
+* <<application.adoc#,TermUI.Application>> — ShowModal

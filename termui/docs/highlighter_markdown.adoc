@@ -1,0 +1,128 @@
+= TermUI.Highlighter.Markdown
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TMarkdownHighlighter` implements <<editor.adoc#TTextHighlighter,TTextHighlighter>> to provide Markdown syntax highlighting for <<editor.adoc#,TTextEditor>>.
+
+`Prepare` does a single full-document pass to resolve multi-line constructs (fenced code blocks).
+`GetSpans` returns color spans for one line.
+
+The highlighter is automatically registered for `.md`, `.markdown`, `.mkd`, `.mkdn`, and `.mdwn` extensions in its `initialization` section.
+
+== Supported constructs
+
+=== Block elements
+
+[cols="1,3"]
+|===
+| Element | Detection
+
+| ATX heading (`# H1` … `###### H6`)
+| Leading `#` chars + space
+
+| Setext heading (underline)
+| Line of `===` or `---` following a paragraph line
+
+| Fenced code block
+| Opening and closing ```` ``` ```` or `~~~` lines
+
+| Indented code block
+| Lines with 4+ leading spaces
+
+| Block quote
+| Leading `>`
+
+| Unordered list item
+| Leading `* `, `- `, or `+ `
+
+| Ordered list item
+| Leading digit(s) + `. `
+
+| Horizontal rule
+| Three or more `*`, `-`, or `_` (with optional spaces)
+
+| HTML comment
+| `<!--` … `-->` (multi-line)
+|===
+
+=== Inline elements (within paragraph, list, and block-quote lines)
+
+[cols="1,2"]
+|===
+| Markup | Color
+
+| `**bold**` / `__bold__`
+| `clBrightWhite`
+
+| `*italic*` / `_italic_`
+| underline
+
+| `` `code` ``
+| `clCyan`
+
+| `[link text](url)`
+| `clBrightBlue` for text; `clBrightBlack` for `(url)`
+
+| `![alt](url)`
+| `clBrightMagenta` for `!`; `clBrightBlue` for alt; `clBrightBlack` for `(url)`
+|===
+
+== Embedded highlighters
+
+When a fenced code block opens with a language tag (e.g. ```` ```pascal ````), `Prepare` records the language for each code line in `FFenceLang[]`.
+`GetSpans` then delegates those lines to the matching embedded highlighter (if registered).
+
+Currently, `pascal` and `xml` tags are recognized by the standard registry.
+
+== Color scheme
+
+[cols="1,2"]
+|===
+| Element | Color
+
+| H1
+| `clBrightCyan`
+
+| H2
+| `clBrightYellow` + underline
+
+| H3
+| `clBrightGreen`
+
+| H4–H6
+| `clGreen`
+
+| Setext underline
+| `clBrightBlack`
+
+| Code block body (no lang tag)
+| `clBrightBlack`
+
+| Code fence line
+| `clBrightBlack`
+
+| Indented code
+| `clBrightBlack`
+
+| Block quote (`>`)
+| `clBrightBlack` for `>` marker; inline markup for rest
+
+| List marker
+| `clBrightYellow`
+
+| Horizontal rule
+| `clBrightBlack`
+
+| HTML comment
+| `clBrightBlack`
+|===
+
+== See also
+
+* <<editor.adoc#,TermUI.Control.Editor>> — TTextEditor, TTextHighlighter, TTextSpan
+* <<highlighter_pascal.adoc#,TermUI.Highlighter.Pascal>> — embedded Pascal highlighter
+* <<highlighter_xml.adoc#,TermUI.Highlighter.XML>> — embedded XML highlighter
+* <<highlighter_asciidoc.adoc#,TermUI.Highlighter.AsciiDoc>> — AsciiDoc highlighter (similar design)

@@ -1,0 +1,85 @@
+= TermUI.Highlighter.Pascal
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TPascalHighlighter` implements <<editor.adoc#TTextHighlighter,TTextHighlighter>> to provide Free Pascal / Object Pascal syntax highlighting for <<editor.adoc#,TTextEditor>>.
+
+`Prepare` builds a per-line state array to track multi-line comments (`{ }` and `(* *)`).
+`GetSpans` uses that state for accurate single-line span generation.
+
+The highlighter is automatically registered for `.pas`, `.pp`, and `.inc` extensions in its `initialization` section.
+
+== Color scheme
+
+[cols="1,2"]
+|===
+| Token | Color
+
+| Keywords
+| `clCyan`
+
+| Comments (`//`, `{ }`, `(* *)`)
+| `clBrightBlack`
+
+| String literals (`'…'`)
+| `clYellow`
+
+| Numeric literals
+| `clGreen`
+
+| Compiler directives (`{$…}`)
+| `clBrightYellow`
+
+| Everything else
+| `clDefault`
+|===
+
+== Multi-line comment state
+
+`FLineState[]` records the comment context at the end of each line:
+
+[cols="1,2"]
+|===
+| State | Meaning
+
+| `0`
+| Normal (not inside a multi-line comment)
+
+| `1`
+| Inside a `{ … }` brace comment
+
+| `2`
+| Inside a `(* … *)` paren-star comment
+|===
+
+`Prepare` fills this array in a single forward pass.
+`GetSpans` reads `FLineState[ARow - 1]` to know the starting context for the row.
+
+== Extended API
+
+[source,pascal]
+----
+procedure GetSpansWithState(const ALine: string; AState: Byte;
+  out ASpans: TTextSpanArray);
+
+function LineState(ARow: Integer): Byte;
+----
+
+`GetSpansWithState` is the internal core; it accepts an explicit starting state.
+Call it directly when embedding the Pascal highlighter in another highlighter (e.g. inside AsciiDoc code fences).
+
+`LineState` returns the end-of-line state for a given row (0-based); useful after `Prepare` has been called.
+
+== Keyword table
+
+The keyword table contains 93 entries and is searched with binary search.
+Keywords include all standard Free Pascal reserved words and commonly recognized directives such as `property`, `index`, `read`, `write`, `default`, `stored`, `implements`, `override`, `virtual`, `abstract`, `deprecated`, `platform`, `experimental`.
+
+== See also
+
+* <<editor.adoc#,TermUI.Control.Editor>> — TTextEditor, TTextHighlighter, TTextSpan
+* <<highlighter_asciidoc.adoc#,TermUI.Highlighter.AsciiDoc>> — uses Pascal highlighter for embedded code blocks
+* <<highlighter_markdown.adoc#,TermUI.Highlighter.Markdown>> — uses Pascal highlighter for embedded code blocks

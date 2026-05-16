@@ -1,0 +1,86 @@
+= TermUI.Control.ComboBox
+:toc:
+
+link:index.adoc[← Index]
+
+== Overview
+
+`TComboBox` is a drop-down selector control.
+It supports two styles:
+
+* `csFixed` — read-only selector; the user picks from the list but cannot type a custom value.
+* `csDropDown` — editable field with live filtering; typed text narrows the list.
+
+== TComboBoxStyle
+
+[source,pascal]
+----
+TComboBoxStyle = (csFixed, csDropDown);
+----
+
+== TComboBox
+
+Extends <<control.adoc#,TControl>>.
+
+[source,pascal]
+----
+TComboBox = class(TControl)
+  property Items:                 TStrings;    // list of choices (not owned)
+  property SelectedIndex:         Integer;     // -1 = nothing selected
+  property SelectedText:          string;      // read-only convenience
+  property Style:                 TComboBoxStyle;
+  property TextAlign:             TLabelAlign; // laLeft (default), laCenter, laRight
+  property OpenOnFocus:           Boolean;     // open drop-down when control gains focus
+  property RequireValidSelection: Boolean;     // prevent closing without a valid item
+  property OnChange:              TNotifyEvent;
+end;
+----
+
+== Drop-down behavior
+
+When the user opens the drop-down (Enter, Space, or focus if `OpenOnFocus = True`), a `TComboDropDown` overlay modal is shown:
+
+* Scrollable list with a scroll bar on the right.
+* For `csDropDown`: a filter row at the top; typing narrows the list in real time.
+* The list auto-sizes to the number of items, up to the available screen height.
+* If there is not enough space below the combo, the list opens *above* it.
+
+Navigation in the drop-down:
+
+[cols="1,3"]
+|===
+| Key | Action
+
+| `Up` / `Down`
+| Move highlight
+
+| `Home` / `End`
+| Jump to first / last item
+
+| `PgUp` / `PgDn`
+| Scroll one page
+
+| `Enter`
+| Confirm selection
+
+| `Escape`
+| Cancel (restore previous selection)
+|===
+
+== Example
+
+[source,pascal]
+----
+Combo := TComboBox.Create;
+Combo.SetBounds(10, 5, 25, 1);
+Combo.Style := csFixed;
+Combo.Items.Add('Option A');
+Combo.Items.Add('Option B');
+Combo.SelectedIndex := 0;
+Combo.OnChange := @HandleComboChange;
+----
+
+== See also
+
+* <<control.adoc#,TermUI.Control>> — TControl base
+* <<filedialog.adoc#,TermUI.Form.FileDialog>> — uses TComboBox for the filter selector
