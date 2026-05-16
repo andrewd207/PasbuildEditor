@@ -70,9 +70,6 @@ begin
       DebugOverlay.Toggle;
       Result := True;
     end;
-    kcF5: begin
-      raise Exception.Create('Test crash triggered by F5');
-    end;
     kcCtrlC: begin
       GCtrlCRequested := True;
       GQuitRequested  := True;
