@@ -138,7 +138,7 @@ var
   SubProject:  TProjectBase;
   SubCtx:      TUIContext;
   ModFilePath: string;
-  UChar:       Char;
+  UChar:       TUTF8Char;
   ScanMenu:    TMenu;
   ScanSel:     TMenuItem;
   CandName:    string;
@@ -200,17 +200,17 @@ begin
           CandName := ModuleNameFromAbsDir(
             IncludeTrailingPathDelimiter(ExtractFilePath(ExpandFileName(Ctx.Project.FileName)))
             + Modl.Path);
-          case UpCase(UChar) of
-            'E': begin
-              Modl.ActiveByDefault := True;
-              Ctx.SetModified;
-              LastLabel := CandName;
-            end;
-            'D': begin
-              Modl.ActiveByDefault := False;
-              Ctx.SetModified;
-              LastLabel := CandName + ' (disabled)';
-            end;
+          if UpCase(UChar[1]) = 'E' then
+          begin
+            Modl.ActiveByDefault := True;
+            Ctx.SetModified;
+            LastLabel := CandName;
+          end
+          else if UpCase(UChar[1]) = 'D' then
+          begin
+            Modl.ActiveByDefault := False;
+            Ctx.SetModified;
+            LastLabel := CandName + ' (disabled)';
           end;
         end;
         Continue;

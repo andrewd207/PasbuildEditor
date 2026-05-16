@@ -8,11 +8,12 @@
     <mainSource>Main.pas</mainSource>
     <executableName>termui-example-editor</executableName>
     <packaging>application</packaging>
+    <compilerOptions>
+      <option>-gl</option>
+      <option>-gw3</option>
+    </compilerOptions>
   </build>
-  <dependencies>
-    <dependency>
-      <name>pasbuildeditor-termui</name>
-      <version>1.0.0</version>
-    </dependency>
-  </dependencies>
+  <moduleDependencies>
+    <module>../../termui</module>
+  </moduleDependencies>
 </project>

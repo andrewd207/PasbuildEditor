@@ -69,7 +69,7 @@ type
   TMenuBarItem = class
   public
     Caption: string;
-    Accel:   Char;     { #0 = no accelerator }
+    Accel:   TUTF8Char;     { #0 = no accelerator }
     AccelIdx: Integer; { 0-based position of the accel char in Caption; -1 = none }
     Items:   TMenuItemList;
 
@@ -136,7 +136,7 @@ type
     FDropDown: TMenuBarDropDown;
     function  ItemLeft(I: Integer): Integer;
     function  ItemDisplayLen(I: Integer): Integer;
-    function  FindAccel(ACh: Char): Integer;
+    function  FindAccel(ACh: TUTF8Char): Integer;
     procedure OpenDropDown(AIdx: Integer);
   protected
     procedure DoPaint; override;
@@ -154,7 +154,7 @@ type
     { Open the submenu whose accelerator matches ACh.  No-op if not found.
       Call from your Application.OnKeyDown when kcAltChar is received and
       the bar is already showing. }
-    procedure ActivateAccel(ACh: Char);
+    procedure ActivateAccel(ACh: TUTF8Char);
   end;
 
 implementation
@@ -481,7 +481,7 @@ begin
           { Label with accel highlighted }
           AccelPos := -1;
           if Item.Hotkey <> #0 then
-            PosNeutral(UpCase(Item.Hotkey), UpperCase(Item.Label_), AccelPos);
+            PosNeutral(UpCase(Item.Hotkey[1]), UpperCase(Item.Label_), AccelPos);
           for J := 0 to Length(Item.Label_) - 1 do
           begin
             if J = AccelPos then
@@ -625,7 +625,7 @@ begin
           { Label with hotkey highlighted }
           AccelPos := -1;
           if Item.Hotkey <> #0 then
-            PosNeutral(UpCase(Item.Hotkey), UpperCase(Item.Label_), AccelPos);
+            PosNeutral(UpCase(Item.Hotkey[1]), UpperCase(Item.Label_), AccelPos);
 
           for J := 0 to Length(Item.Label_) - 1 do
           begin
@@ -671,7 +671,7 @@ begin
           { Label }
           AccelPos := -1;
           if Item.Hotkey <> #0 then
-            PosNeutral(UpCase(Item.Hotkey), UpperCase(Item.Label_), AccelPos);
+            PosNeutral(UpCase(Item.Hotkey[1]), UpperCase(Item.Label_), AccelPos);
           for J := 0 to Length(Item.Label_) - 1 do
           begin
             if J = AccelPos then
@@ -751,7 +751,7 @@ begin
         begin
           for I := 0 to SubItems.Count - 1 do
             if SubSelectable(I) and (SubItems[I].Hotkey <> #0) and
-               (UpCase(SubItems[I].Hotkey) = UpCase(Key.Ch)) then
+               (UpCase(SubItems[I].Hotkey[1]) = UpCase(Key.Ch[1])) then
             begin
               FSubSel   := I;
               FSelected := SubItems[I];
@@ -832,7 +832,7 @@ begin
       begin
         for I := 0 to FItemList.Count - 1 do
           if Selectable(I) and (FItemList[I].Hotkey <> #0) and
-             (UpCase(FItemList[I].Hotkey) = UpCase(Key.Ch)) then
+             (UpCase(FItemList[I].Hotkey[1]) = UpCase(Key.Ch[1])) then
           begin
             FSel := I;
             if FItemList[I].Kind = mikSubmenu then
@@ -908,12 +908,12 @@ begin
     Inc(Result, ItemDisplayLen(J));
 end;
 
-function TMenuBar.FindAccel(ACh: Char): Integer;
+function TMenuBar.FindAccel(ACh: TUTF8Char): Integer;
 var I: Integer;
 begin
   for I := 0 to FTopItems.Count - 1 do
     if (FTopItems[I].Accel <> #0) and
-       (UpCase(FTopItems[I].Accel) = UpCase(ACh)) then
+       (UpCase(FTopItems[I].Accel[1]) = UpCase(ACh[1])) then
       Exit(I);
   Result := -1;
 end;
@@ -1016,7 +1016,7 @@ begin
   until False;
 end;
 
-procedure TMenuBar.ActivateAccel(ACh: Char);
+procedure TMenuBar.ActivateAccel(ACh: TUTF8Char);
 var
   Idx: Integer;
 begin

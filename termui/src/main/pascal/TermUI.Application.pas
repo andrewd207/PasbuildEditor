@@ -14,7 +14,7 @@ unit TermUI.Application;
 interface
 
 uses
-  Classes, SysUtils, TermUI.Terminal, TermUI.Control, TermUI.Forms;
+  Classes, SysUtils, TermUI.Terminal, TermUI.Control, TermUI.Forms, TermUI.Clipboard;
 
 type
   { The application event loop. There is one global instance: Application.
@@ -112,6 +112,12 @@ var
   Application: TApplication;
 
 implementation
+
+uses
+  {$IF defined(WINDOWS) or defined(UNIX)}
+  TermUI.Clipboard.Platform
+  {$ENDIF}
+  ;
 
 function TApplication.GetActiveForm: TForm;
 var N: Integer;

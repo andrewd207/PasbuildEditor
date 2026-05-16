@@ -67,7 +67,10 @@ type
     procedure DoSave(Sender: TObject = nil);
     procedure DoSaveAs(Sender: TObject = nil);
     procedure DoQuit(Sender: TObject = nil);
+    procedure DoCopy(Sender: TObject = nil);
+    procedure DoPaste(Sender: TObject = nil);
     procedure DoSelectHighlighterItem(Sender: TObject);
+    procedure DoToggleWordWrap(Sender: TObject);
 
     procedure OpenFile(const APath: string);
     procedure ApplyHighlighterForPath(const APath: string);
@@ -188,7 +191,7 @@ begin
   Term.GotoXY(Left, Top + Height - 1);
   Term.SetFG(clBlack);
   Term.SetBG(clWhite);
-  Hints := ' ^N New  ^O Open  ^S Save  ^A Save As  ^Q Quit  Alt+F1 Menu ';
+  Hints := ' ^N New  ^O Open  ^S Save  ^A Save As  ^C Copy  ^V Paste  ^Q Quit  Alt+F1 Menu ';
   while Length(Hints) < Width do Hints := Hints + ' ';
   if Length(Hints) > Width then Hints := CopyNeutral(Hints, 0, Width);
   Term.WriteStr(Hints);
@@ -321,6 +324,22 @@ begin
   if CheckSave then Application.Terminate;
 end;
 
+procedure TEditorForm.DoCopy(Sender: TObject);
+begin
+  FEditor.CopyCurrentLine;
+end;
+
+procedure TEditorForm.DoPaste(Sender: TObject);
+var
+  Key: TKeyEvent;
+begin
+  { Synthesise a Ctrl+V key event so the editor's paste path fires. }
+  Key.Code      := kcCtrlV;
+  Key.Ch        := #0;
+  Key.PasteText := '';
+  FEditor.KeyDown(Key);
+end;
+
 procedure TEditorForm.BuildHighlighterSubmenu;
 const
   HLGroup = 1;
@@ -332,6 +351,12 @@ var
   Current: string;
 begin
   FEditMenu.Items.Clear;
+  FEditMenu.Items.Add(TMenuItem.CreateEmbeddedHotkey('&Copy',  @DoCopy));
+  FEditMenu.Items.Add(TMenuItem.CreateEmbeddedHotkey('&Paste', @DoPaste));
+  FEditMenu.Items.Add(TMenuItem.CreateSeparator);
+  FEditMenu.Items.Add(TMenuItem.CreateCheck('&Word Wrap', @DoToggleWordWrap,
+    FEditor.WordWrap));
+  FEditMenu.Items.Add(TMenuItem.CreateSeparator);
   if Assigned(FEditor.Highlighter) then
     Current := FEditor.Highlighter.Name
   else
@@ -378,6 +403,16 @@ begin
   Invalidate;
 end;
 
+procedure TEditorForm.DoToggleWordWrap(Sender: TObject);
+var
+  Item: TMenuItem;
+begin
+  Item := TMenuItem(Sender);
+  FEditor.WordWrap := not FEditor.WordWrap;
+  Item.Checked     := FEditor.WordWrap;
+  Invalidate;
+end;
+
 function TEditorForm.DoKeyDown(var Key: TKeyEvent): Boolean;
 begin
   Result := True;
@@ -411,6 +446,7 @@ begin
   Term.EnableRawMode;
   Term.HideCursor;
   Term.EnterAltScreen;
+  Term.EnableBracketedPaste;
   try
     Form := TEditorForm.Create('Editor');
     try
@@ -443,6 +479,7 @@ begin
       Form.Free;
     end;
   finally
+    Term.DisableBracketedPaste;
     Term.ExitAltScreen;
     Term.ShowCursor;
     Term.DisableRawMode;

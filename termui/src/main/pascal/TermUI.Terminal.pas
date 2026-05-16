@@ -13,6 +13,9 @@ unit TermUI.Terminal;
 
 interface
 
+uses
+  TermUI.StringUtils;
+
 type
   TKeyCode = (
     kcNone,
@@ -20,6 +23,11 @@ type
     kcUp, kcDown, kcLeft, kcRight,
     { Shift+arrows }
     kcShiftUp, kcShiftDown, kcShiftLeft, kcShiftRight,
+    { Shift+navigation }
+    kcShiftHome, kcShiftEnd, kcShiftPageUp, kcShiftPageDown,
+    { Ctrl+Shift combinations }
+    kcShiftCtrlHome, kcShiftCtrlEnd,
+    kcShiftCtrlLeft, kcShiftCtrlRight,
     { Alt+arrows }
     kcAltUp, kcAltDown, kcAltLeft, kcAltRight,
     { Ctrl+arrows }
@@ -47,12 +55,17 @@ type
       On Windows: decoded from VK with LEFT_ALT_PRESSED / RIGHT_ALT_PRESSED. }
     kcAltChar,
     { Alt+F1 }
-    kcAltF1
+    kcAltF1,
+    { Bracketed paste — Key.PasteText holds the pasted string.
+      Fired when the terminal wraps a user paste in ESC[200~...ESC[201~. }
+    kcBracketedPaste
   );
 
   TKeyEvent = record
-    Code: TKeyCode;
-    Ch:   Char;
+    Code:      TKeyCode;
+    Ch:        TUTF8Char;
+    { Filled only when Code = kcBracketedPaste. }
+    PasteText: string;
   end;
 
   TColor = (
@@ -115,7 +128,7 @@ type
 
   { Each buffer cell holds one Unicode codepoint as a UTF-8 sequence (1-4 bytes). }
   TScreenCell = record
-    Ch:        string[4];
+    Ch:        TUtf8Char;
     FG, BG:    TColor;
     Underline: Boolean;
   end;
@@ -151,7 +164,7 @@ type
   protected
     procedure InitColor;
     { Subclasses call this to emit bytes directly to stdout (bypasses buffer). }
-    procedure RawWrite(const S: string);
+    procedure RawWrite(const S: RawByteString);
 
   public
     function Width: Integer; virtual; abstract;
@@ -213,6 +226,13 @@ type
 
     procedure EnterAltScreen; virtual;
     procedure ExitAltScreen; virtual;
+
+    { Enable/disable bracketed paste mode (ESC[?2004h / ESC[?2004l).
+      When enabled the terminal wraps user-initiated pastes in ESC[200~...ESC[201~
+      so they can be distinguished from typed input.  No-op on platforms that
+      don't support it. }
+    procedure EnableBracketedPaste; virtual;
+    procedure DisableBracketedPaste; virtual;
   end;
 
 type
@@ -227,7 +247,7 @@ implementation
   RegisterTerminalFactory automatically.  The conditional matches the source
   paths declared in project.xml, so exactly one platform unit is compiled. }
 uses
-  SysUtils, TermUI.StringUtils,
+  SysUtils,
   {$IF defined(WINDOWS) or defined(UNIX)}
   TermUI.Terminal.Platform
   {$ENDIF}
@@ -311,7 +331,7 @@ begin
   Result := False;
 end;
 
-procedure TTerminal.RawWrite(const S: string);
+procedure TTerminal.RawWrite(const S: RawByteString);
 begin
   System.Write(S);
 end;
@@ -518,7 +538,7 @@ var
   LastFG:  TColor;
   LastBG:  TColor;
   LastUL:  Boolean;
-  Buf:     string;
+  Buf:     RawByteString;
 begin
   if (Y < 1) or (Y > FBufH) then Exit;
   Buf    := #27'[?25l';
@@ -598,6 +618,14 @@ begin
 end;
 
 procedure TTerminal.ExitAltScreen;
+begin
+end;
+
+procedure TTerminal.EnableBracketedPaste;
+begin
+end;
+
+procedure TTerminal.DisableBracketedPaste;
 begin
 end;
 

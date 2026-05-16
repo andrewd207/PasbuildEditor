@@ -435,7 +435,7 @@ begin
       if (FStyle = csDropDown) and (Key.Ch >= ' ') then
       begin
         InsertNeutral(FEditText, Key.Ch, FEditCursor);
-        Inc(FEditCursor);
+        Inc(FEditCursor, System.Length(string(Key.Ch)));
         RebuildFilter; Invalidate;
       end
       else Result := False;
@@ -649,7 +649,7 @@ begin
         else if Key.Ch >= ' ' then
         begin
           InsertNeutral(FEditText, Key.Ch, FEditCursor);
-          Inc(FEditCursor);
+          Inc(FEditCursor, System.Length(string(Key.Ch)));
           Invalidate;
           OpenDropdown;
         end

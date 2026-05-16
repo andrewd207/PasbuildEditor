@@ -60,7 +60,7 @@ implementation
 { ── Keyword table (sorted, for binary search) ── }
 
 const
-  KW: array[0..94] of string = (
+  KW: array[0..92] of string = (
     'absolute',   'abstract',  'and',         'array',
     'as',         'asm',       'begin',        'break',
     'case',       'cdecl',     'class',        'const',
@@ -78,14 +78,28 @@ const
     'out',        'overload',  'override',     'packed',
     'pascal',     'private',   'procedure',    'program',
     'property',   'protected', 'public',       'published',
-    'raise',      'read',      'record',       'register',
-    'repeat',     'result',    'self',         'set',
-    'shl',        'shr',       'specialize',   'stdcall',
-    'string',     'then',      'to',           'true',
-    'try',        'type',      'unit',         'until',
-    'uses',       'var',       'virtual',      'while',
-    'with',       'write',     'xor'
+    'raise',      'record',    'register',     'repeat',
+    'result',     'self',      'set',          'shl',
+    'shr',        'specialize','stdcall',      'string',
+    'then',       'to',        'true',         'try',
+    'type',       'unit',      'until',        'uses',
+    'var',        'virtual',   'while',        'with',
+    'xor'
   );
+
+  { Keywords that are only valid as property specifiers }
+  PropKW: array[0..2] of string = ('index', 'read', 'write');
+
+function IsPropKeyword(const S: string): Boolean;
+var
+  L: string;
+  I: Integer;
+begin
+  L := LowerCase(S);
+  for I := 0 to High(PropKW) do
+    if PropKW[I] = L then Exit(True);
+  Result := False;
+end;
 
 function IsKeyword(const S: string): Boolean;
 var
@@ -232,6 +246,7 @@ var
   W:     string;
   Colors: array of TColor;
   RunColor: TColor;
+  InProperty: Boolean;
 begin
   ASpans := nil;
   Len    := Length(ALine);
@@ -240,8 +255,9 @@ begin
   SetLength(Colors, Len);
   for K := 0 to Len - 1 do Colors[K] := clDefault;
 
-  State := AState;
-  J     := 1;
+  State      := AState;
+  InProperty := False;
+  J          := 1;
   while J <= Len do
   begin
     C := ALine[J];
@@ -329,6 +345,30 @@ begin
                     Inc(J);
                 end;
               end;
+            '#':
+              begin
+                Colors[J - 1] := clYellow;
+                Inc(J);
+                if (J <= Len) and (ALine[J] = '$') then
+                begin
+                  Colors[J - 1] := clYellow;
+                  Inc(J);
+                  while (J <= Len) and
+                        (ALine[J] in ['0'..'9', 'A'..'F', 'a'..'f']) do
+                  begin
+                    Colors[J - 1] := clYellow;
+                    Inc(J);
+                  end;
+                end
+                else
+                begin
+                  while (J <= Len) and (ALine[J] in ['0'..'9']) do
+                  begin
+                    Colors[J - 1] := clYellow;
+                    Inc(J);
+                  end;
+                end;
+              end;
             '$':
               begin
                 Colors[J - 1] := clGreen;
@@ -373,6 +413,13 @@ begin
                   Inc(J);
                 end;
                 if IsKeyword(W) then
+                begin
+                  for K := WStart - 1 to J - 2 do
+                    Colors[K] := clCyan;
+                  if LowerCase(W) = 'property' then
+                    InProperty := True;
+                end
+                else if InProperty and IsPropKeyword(W) then
                   for K := WStart - 1 to J - 2 do
                     Colors[K] := clCyan;
               end;

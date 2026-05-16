@@ -5,11 +5,14 @@
   <license>BSD-3-Clause</license>
   <build>
     <packaging>library</packaging>
-    <manualUnitPaths>false</manualUnitPaths>
     <unitPaths>
       <path condition="WINDOWS">platform/windows/</path>
       <path condition="LINUX">platform/unix/</path>
     </unitPaths>
+    <compilerOptions>
+      <option>-gl</option>
+      <option>-gw3</option>
+    </compilerOptions>
   </build>
   <description>A text based screen drawing library with some routines to make a menu interface</description>
 </project>

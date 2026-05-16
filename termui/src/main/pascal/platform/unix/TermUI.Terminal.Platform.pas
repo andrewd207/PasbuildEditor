@@ -64,6 +64,8 @@ type
 
     procedure EnterAltScreen; override;
     procedure ExitAltScreen; override;
+    procedure EnableBracketedPaste; override;
+    procedure DisableBracketedPaste; override;
   end;
 
 constructor TUnixTerminal.Create;
@@ -190,6 +192,10 @@ var
   Params: string;
   Final:  Byte;
   P1, P2, P3: Integer;
+  PasteBuf: string;
+  PB: Byte;
+  SeqLen, I: Integer;
+  UTF8Seq: string[4];
 
   { Read CSI parameter bytes (digits, semicolons, and other non-final bytes)
     until a final byte: @, A–Z, a–z, or ~.  Returns the final in AFinal. }
@@ -247,19 +253,23 @@ var
   begin
     Result := ABase;
     case AMod of
-      2: case ABase of
-           kcUp:    Result := kcShiftUp;
-           kcDown:  Result := kcShiftDown;
-           kcLeft:  Result := kcShiftLeft;
-           kcRight: Result := kcShiftRight;
+      2: case ABase of  { Shift }
+           kcUp:       Result := kcShiftUp;
+           kcDown:     Result := kcShiftDown;
+           kcLeft:     Result := kcShiftLeft;
+           kcRight:    Result := kcShiftRight;
+           kcHome:     Result := kcShiftHome;
+           kcEnd:      Result := kcShiftEnd;
+           kcPageUp:   Result := kcShiftPageUp;
+           kcPageDown: Result := kcShiftPageDown;
          end;
-      3: case ABase of
+      3: case ABase of  { Alt }
            kcUp:    Result := kcAltUp;
            kcDown:  Result := kcAltDown;
            kcLeft:  Result := kcAltLeft;
            kcRight: Result := kcAltRight;
          end;
-      5: case ABase of
+      5: case ABase of  { Ctrl }
            kcUp:    Result := kcCtrlUp;
            kcDown:  Result := kcCtrlDown;
            kcLeft:  Result := kcCtrlLeft;
@@ -267,12 +277,18 @@ var
            kcHome:  Result := kcCtrlHome;
            kcEnd:   Result := kcCtrlEnd;
          end;
+      6: case ABase of  { Ctrl+Shift }
+           kcLeft:  Result := kcShiftCtrlLeft;
+           kcRight: Result := kcShiftCtrlRight;
+           kcHome:  Result := kcShiftCtrlHome;
+           kcEnd:   Result := kcShiftCtrlEnd;
+         end;
     end;
   end;
 
 begin
-  Result.Code := kcNone;
-  Result.Ch   := #0;
+  Result.Code   := kcNone;
+  Result.Ch     := #0;
 
   if not ReadByte(B) then Exit;
 
@@ -303,7 +319,7 @@ begin
     24:  Result.Code := kcCtrlX;
     25:  Result.Code := kcCtrlY;
     26:  Result.Code := kcCtrlZ;
-    27: begin
+    27: begin { ESC }
       if not ReadByte(B2, 50) then begin Result.Code := kcEscape; Exit; end;
       case B2 of
         Ord('O'): begin
@@ -363,8 +379,8 @@ begin
               2:  Result.Code := kcInsert;
               3:  Result.Code := kcDelete;
               4:  Result.Code := ModKey(kcEnd, P2);
-              5:  Result.Code := kcPageUp;
-              6:  Result.Code := kcPageDown;
+              5:  Result.Code := ModKey(kcPageUp,   P2);
+              6:  Result.Code := ModKey(kcPageDown, P2);
               7:  Result.Code := kcHome;
               8:  Result.Code := kcEnd;
               11: Result.Code := kcF1;
@@ -381,6 +397,29 @@ begin
               24: Result.Code := kcF12;
               25: Result.Code := kcF13;
               26: Result.Code := kcF14;
+              200: begin
+                { Bracketed paste start — accumulate raw bytes until ESC[201~ }
+                PasteBuf := '';
+                repeat
+                  if not ReadByte(PB) then Break;
+                  if PB <> 27 then begin PasteBuf := PasteBuf + Chr(PB); Continue; end;
+                  { ESC — check for [201~ }
+                  if not ReadByte(PB, 50) then begin PasteBuf := PasteBuf + #27; Break; end;
+                  if PB <> Ord('[') then
+                  begin
+                    PasteBuf := PasteBuf + #27 + Chr(PB);
+                    Continue;
+                  end;
+                  { Read CSI params to see if this is 201~ }
+                  Params := ReadCSIParams(Final);
+                  if (Final = Ord('~')) and (Params = '201') then
+                    Break   { end of bracketed paste }
+                  else
+                    PasteBuf := PasteBuf + #27 + '[' + Params + Chr(Final);
+                until False;
+                Result.Code      := kcBracketedPaste;
+                Result.PasteText := PasteBuf;
+              end;
             end;
           end;
         end;
@@ -398,7 +437,21 @@ begin
     127: Result.Code := kcBackspace;
     else begin
       Result.Code := kcChar;
-      Result.Ch   := Char(B);
+      if B < $80 then
+        Result.Ch := Char(B)
+      else
+      begin
+        if      B < $E0 then SeqLen := 2
+        else if B < $F0 then SeqLen := 3
+        else                 SeqLen := 4;
+        UTF8Seq := Char(B);
+        for I := 2 to SeqLen do
+          if ReadByte(B2, 100) then
+            UTF8Seq := UTF8Seq + Char(B2)
+          else
+            Break;
+        Result.Ch := UTF8Seq;
+      end;
     end;
   end;
 end;
@@ -423,6 +476,16 @@ procedure TUnixTerminal.ExitAltScreen;
 begin
   RawWrite(#27'[?7h');     // re-enable line wrap
   RawWrite(#27'[?1049l'); // restore main buffer and cursor
+end;
+
+procedure TUnixTerminal.EnableBracketedPaste;
+begin
+  RawWrite(#27'[?2004h');
+end;
+
+procedure TUnixTerminal.DisableBracketedPaste;
+begin
+  RawWrite(#27'[?2004l');
 end;
 
 function CreateUnixTerminal: TTerminal;

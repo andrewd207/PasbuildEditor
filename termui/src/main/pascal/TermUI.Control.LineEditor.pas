@@ -174,7 +174,7 @@ begin
       if Key.Ch >= ' ' then
       begin
         Insert(Key.Ch, FBuf, FCur);
-        Inc(FCur);
+        Inc(FCur, System.Length(string(Key.Ch)));
         Invalidate;
         if Assigned(FOnChange) then FOnChange(Self);
       end;

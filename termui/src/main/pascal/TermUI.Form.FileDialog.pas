@@ -101,7 +101,7 @@ type
     procedure DrawHintBar;
     procedure PlaceCursor;
 
-    procedure FilenameInsert(ACh: Char);
+    procedure FilenameInsert(ACh: TUTF8Char);
     procedure FilenameBackspace;
     procedure FilenameDelete;
     procedure FilenameMoveLeft;
@@ -111,7 +111,7 @@ type
     function  FieldLabelWidth: Integer;
     procedure FilenameCalcScroll(out AScroll: Integer);
 
-    procedure ActivateSearch(ACh: Char);
+    procedure ActivateSearch(ACh: TUTF8Char);
     procedure DeactivateSearch(AAccept: Boolean);
     procedure SearchMatch;
     function  DefaultExtension: string;
@@ -471,8 +471,8 @@ begin
   if AScroll < 0 then AScroll := 0;
 end;
 
-procedure TFileDialog.FilenameInsert(ACh: Char);
-begin Insert(ACh, FFilename, FFilenameCur); Inc(FFilenameCur); Invalidate; end;
+procedure TFileDialog.FilenameInsert(ACh: TUTF8Char);
+begin Insert(string(ACh), FFilename, FFilenameCur); Inc(FFilenameCur, System.Length(string(ACh))); Invalidate; end;
 procedure TFileDialog.FilenameBackspace;
 begin
   if FFilenameCur > 1 then
@@ -574,7 +574,7 @@ begin
   FSel := -1;
 end;
 
-procedure TFileDialog.ActivateSearch(ACh: Char);
+procedure TFileDialog.ActivateSearch(ACh: TUTF8Char);
 begin
   FSearchPrevSel := FSel;
   FSearchText    := ACh;
@@ -941,7 +941,7 @@ begin
         if Key.Ch >= ' ' then
         begin
           InsertNeutral(FSearchText, Key.Ch, FSearchCursor);
-          Inc(FSearchCursor);
+          Inc(FSearchCursor, System.Length(string(Key.Ch)));
           SearchMatch;
           Invalidate;
         end;
@@ -1021,17 +1021,14 @@ begin
 
     kcChar:
       begin
-        case Key.Ch of
-          'h', 'H':
-            begin
-              FShowHidden := not FShowHidden;
-              FSel := 0; FTopRow := 0;
-              LoadDir; Invalidate;
-            end;
-        else
-          if Key.Ch >= ' ' then
-            ActivateSearch(Key.Ch);
-        end;
+        if (Key.Ch = 'h') or (Key.Ch = 'H') then
+        begin
+          FShowHidden := not FShowHidden;
+          FSel := 0; FTopRow := 0;
+          LoadDir; Invalidate;
+        end
+        else if Key.Ch >= ' ' then
+          ActivateSearch(Key.Ch);
       end;
 
   else

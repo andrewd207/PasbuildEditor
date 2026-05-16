@@ -31,7 +31,7 @@ type
     Value:   string;
     Hint:    string;   // gray suffix shown after the label (headers only)
     Desc:    string;   // one-line description shown in the status bar when selected
-    Hotkey:  Char;     // #0 = none
+    Hotkey:  TUTF8Char;     // #0 = none
     Enabled: Boolean;
     DimItem:  Boolean;  // render label+value in dim/gray (e.g. inactive modules)
     DimValue: Boolean;  // render value only in dim/gray (e.g. "(none)")
@@ -42,7 +42,7 @@ type
     SubItems: TMenuItemList;  // owned; non-nil only for mikSubmenu items
     Action:  TNotifyEvent;
     constructor Create(const ALabel: string; AAction: TNotifyEvent = nil;
-      const AValue: string = ''; AHotkey: Char = #0; AHint: String = '');
+      const AValue: string = ''; AHotkey: TUTF8Char = #0; AHint: String = '');
     constructor CreateEmbeddedHotkey(const ALabel: string; AAction: TNotifyEvent = nil;
       const AValue: string = ''; AHint: String = '');
     constructor CreateHeader(const ALabel: string);
@@ -54,7 +54,7 @@ type
     constructor CreateCheck(const ALabel: string; AAction: TNotifyEvent = nil;
       AChecked: Boolean = False);
     { Creates a submenu item.  Populate SubItems after construction. }
-    constructor CreateSubmenu(const ALabel: string; AHotkey: Char = #0);
+    constructor CreateSubmenu(const ALabel: string; AHotkey: TUTF8Char = #0);
     destructor Destroy; override;
   end;
 
@@ -69,7 +69,7 @@ type
     FFooterRows:     Integer;
     FSelectedItem:   TMenuItem;  // set by DoKeyDown before calling Close
     FExitedLeft:     Boolean;  // True when Run returned nil via Left arrow (not Esc/Q)
-    FUnhandledChar:  Char;     // Set when a char key wasn't consumed; #0 otherwise
+    FUnhandledChar:  TUTF8Char;     // Set when a char key wasn't consumed; #0 otherwise
     FDeletePressed:  Boolean;  // True when Del was pressed on the current selection
     FHelpDoc:        string;
 
@@ -102,7 +102,7 @@ type
     property Selected:      Integer       read FSel;
     property SelectedItem:  TMenuItem     read FSelectedItem;
     property ExitedLeft:    Boolean       read FExitedLeft;
-    property UnhandledChar: Char          read FUnhandledChar;
+    property UnhandledChar: TUTF8Char     read FUnhandledChar;
     property DeletePressed: Boolean       read FDeletePressed;
     { Help document name for F1 (e.g. 'build', 'project'). Empty = no help. }
     property HelpDoc:       string        read FHelpDoc        write FHelpDoc;
@@ -127,7 +127,7 @@ type
   procedure DrawRule(Row, Col, Width: Integer);
   function  PadRight(const S: string; Width: Integer): string;
   function  JoinTruncated(AList: TStrings; const Sep: string; MaxLen: Integer): string;
-  function  IsValidIdentifier(const S: string): Boolean;
+  function  IsValidIdentifier(const S: RawByteString): Boolean;
 
 var
   AppTitle:   string = 'TermUI';
@@ -212,14 +212,15 @@ end;
 
 { Returns True if S is a valid compiler define/profile identifier:
   A-Z, a-z, _ plus digits (not as first character). No spaces. }
-function IsValidIdentifier(const S: string): Boolean;
+function IsValidIdentifier(const S: RawByteString): Boolean;
 var I: Integer;
 begin
   Result := False;
   if S = '' then Exit;
-  if not (S.Index[0] in ['A'..'Z', 'a'..'z', '_']) then Exit;
+  { Since we are accessing a utf8 char we access first the string that holds the char and then it's first member hence S.Chars[0].Index[0] don't change!}
+  if not (S.Chars[0].Index[0] in ['A'..'Z', 'a'..'z', '_']) then Exit;
   for I := 2 to Length(S) do
-    if not (S[I] in ['A'..'Z', 'a'..'z', '0'..'9', '_']) then Exit;
+    if not (S.Chars[I].Index[0] in ['A'..'Z', 'a'..'z', '0'..'9', '_']) then Exit;
   Result := True;
 end;
 
@@ -256,14 +257,14 @@ begin
 end;
 
 { Write ALabel into a field of AWidth columns, highlighting the hotkey letter. }
-procedure WriteLabelWithHotkey(const ALabel: string; AHotkey: Char;
+procedure WriteLabelWithHotkey(const ALabel: string; AHotkey: TUTF8Char;
   IsSel: Boolean; AWidth: Integer);
 var
   HKPos, Written, I: Integer;
 begin
   HKPos := -1;
   if AHotkey <> #0 then
-    PosNeutral(UpCase(AHotkey), UpperCase(ALabel), HKPos);
+    PosNeutral(UpCase(AHotkey[1]), UpperCase(ALabel), HKPos);
 
   Written := 0;
   if HKPos >= 0 then
@@ -275,12 +276,12 @@ begin
         { Hotkey letter: underline + colour; colour alone on platforms without underline }
         ColorHotkey;
         Term.SetUnderline(True);
-        Term.WriteStr(ALabel.Index[I]);
+        Term.WriteStr(ALabel.Chars[I]);
         Term.SetUnderline(False);
         if IsSel then ColorSelFG else ColorNormal;
       end
       else
-        Term.WriteStr(ALabel.Index[I]);
+        Term.WriteStr(ALabel.Chars[I]);
       Inc(Written);
     end;
   end
@@ -311,7 +312,7 @@ end;
   ══════════════════════════════════════════════════════════════════════ }
 
 constructor TMenuItem.Create(const ALabel: string; AAction: TNotifyEvent = nil;
-  const AValue: string = ''; AHotkey: Char = #0; AHint: String = '');
+  const AValue: string = ''; AHotkey: TUTF8Char = #0; AHint: String = '');
 begin
   inherited Create;
   Kind    := mikNormal;
@@ -334,7 +335,7 @@ constructor TMenuItem.CreateEmbeddedHotkey(
 var
   HotkeyPos: Integer;
   CleanLabel: string;
-  HotkeyChar: Char;
+  HotkeyChar: TUTF8Char;
 begin
   if not PosNeutral('&', ALabel, HotkeyPos) then
     HotkeyPos := -1;
@@ -343,7 +344,7 @@ begin
   begin
     CleanLabel := ALabel;
     DeleteNeutral(CleanLabel, HotkeyPos, 1);
-    HotkeyChar := UpCase(CleanLabel.Index[HotkeyPos]);
+    HotkeyChar := UpCase(CleanLabel.Chars[HotkeyPos]);
   end
   else
   begin
@@ -396,7 +397,7 @@ begin
   Action   := AAction;
 end;
 
-constructor TMenuItem.CreateSubmenu(const ALabel: string; AHotkey: Char);
+constructor TMenuItem.CreateSubmenu(const ALabel: string; AHotkey: TUTF8Char);
 begin
   inherited Create;
   Kind     := mikSubmenu;
@@ -748,7 +749,7 @@ begin
     kcChar: begin
       for Item in FItems do
         if Selectable(FItems.IndexOf(Item)) and
-           (Item.Hotkey <> #0) and (UpCase(Item.Hotkey) = UpCase(Key.Ch)) then
+           (Item.Hotkey <> #0) and (UpCase(Item.Hotkey[1]) = UpCase(Key.Ch[1])) then
         begin
           FSel          := FItems.IndexOf(Item);
           FSelectedItem := Item;
@@ -972,11 +973,9 @@ begin
     kcEnter:  begin FResult := FDefault; Close(1); end;
     kcEscape: begin FResult := False;    Close(1); end;
     kcChar:
-      case UpCase(Key.Ch) of
-        'Y': begin FResult := True;  Close(1); end;
-        'N': begin FResult := False; Close(1); end;
-        else Result := False;
-      end;
+      if UpCase(Key.Ch[1]) = 'Y' then begin FResult := True;  Close(1); end
+      else if UpCase(Key.Ch[1]) = 'N' then begin FResult := False; Close(1); end
+      else Result := False;
     else
       Result := False;
   end;

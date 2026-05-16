@@ -35,7 +35,7 @@ type
   TDisplayLine = class
     Kind: TDisplayLineKind;
     Text: string;
-    constructor Create(AKind: TDisplayLineKind; const AText: string);
+    constructor Create(AKind: TDisplayLineKind; const AText: String);
   end;
 
   TDisplayLineList = specialize TFPGObjectList<TDisplayLine>;
@@ -220,7 +220,7 @@ begin
       Continue;
     end;
 
-    if (Length(S) > 0) and (S.Index[0] = '[') then Continue;
+    if (S.Length > 0) and (S.Chars[0] = '[') then Continue;
     if S = '|===' then begin InTable := not InTable; Continue; end;
     if InTable then Continue;
     if CopyNeutral(S, 0, 2) = '//' then Continue;
@@ -252,21 +252,21 @@ begin
       Continue;
     end;
 
-    if (Length(S) >= 2) and (S.Index[0] in ['*', '-']) and (S.Index[1] = ' ') then
+    if (Length(S) >= 2) and (S.Chars[0].Index[0] in ['*', '-']) and (S.Chars[1].Index[0] = ' ') then
     begin
       FlushPara;
       AppendWrapped(CopyNeutral(S, 2, MaxInt), AContentWidth - 2, dlkBullet, ADisplay);
       Continue;
     end;
 
-    if (Length(S) >= 2) and (S.Index[0] = '.') and (S.Index[1] = ' ') then
+    if (Length(S) >= 2) and (S.Chars[0].Index[0] = '.') and (S.Chars[1].Index[0] = ' ') then
     begin
       FlushPara;
       AppendWrapped(CopyNeutral(S, 2, MaxInt), AContentWidth - 2, dlkBullet, ADisplay);
       Continue;
     end;
 
-    if (Length(S) > 0) and (S.Index[0] = '|') then
+    if (Length(S) > 0) and (S.Chars[0].Index[0] = '|') then
     begin
       FlushPara;
       Push(dlkPara, CopyNeutral(S, 1, MaxInt));
@@ -285,7 +285,7 @@ end;
   Inline markup renderer
   ══════════════════════════════════════════════════════════════════════ }
 
-procedure RenderInline(const S: string; MaxCols: Integer);
+procedure RenderInline(const S: RawByteString; MaxCols: Integer);
 var
   I, Col, SeqLen: Integer;
   InBold, InItal, InMono: Boolean;
@@ -337,7 +337,7 @@ const
   TOC_W     = 22;
   HELP_FOOT = ' ↑↓ Scroll   Tab/←→ Switch panel   Enter Jump   Esc Close ';
 
-constructor TAsciiDocViewer.Create(const ATitle: string);
+constructor TAsciiDocViewer.Create(const ATitle: String);
 begin
   inherited Create(ATitle);
   FRawLines   := TStringList.Create;
@@ -358,11 +358,11 @@ begin
 end;
 
 procedure TAsciiDocViewer.SetContent(ARawLines: TStringList;
-  const ATitle: string; const AContextKey: string);
+  const ATitle: String; const AContextKey: String);
 var
   I: Integer;
 
-  function FindContextTOC(const AKey: string): Integer;
+  function FindContextTOC(const AKey: RawByteString): Integer;
   var J: Integer;
   begin
     Result := -1;
@@ -433,7 +433,7 @@ begin
 end;
 
 procedure TAsciiDocViewer.DrawTOCRow(ATOCIdx, ARow: Integer);
-var IsSel: Boolean; Txt: string;
+var IsSel: Boolean; Txt: RawByteString;
 begin
   Term.GotoXY(1, ARow); Term.ClearToEOL;
   if (ATOCIdx < 0) or (ATOCIdx >= FTOCCount) then Exit;
@@ -582,7 +582,7 @@ begin
       end;
 
     kcChar:
-      if UpCase(Key.Ch) = 'Q' then Close(1)
+      if (Key.Ch = 'Q') or (Key.Ch = 'q') then Close(1)
       else Result := False;
 
     else
