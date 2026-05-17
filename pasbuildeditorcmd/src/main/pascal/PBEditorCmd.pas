@@ -2150,6 +2150,8 @@ begin
     begin
       if GMutCount > 0 then
         Die('--rename-module-dir cannot be combined with other mutation flags');
+      if SameText(ProjectFile, Tree.RootPOMFile) then
+        Die('--rename-module-dir cannot be used on the root POM module');
       DoRenameModuleDir(Tree, GModuleName, GRenameModuleDir, ProjectFile);
       Halt(0);
     end;

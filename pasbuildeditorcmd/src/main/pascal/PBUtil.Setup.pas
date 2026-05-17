@@ -476,6 +476,10 @@ begin
   Tree := TProjectTree.Create;
   try
     if Tree.LoadFromDir(GetCurrentDir) then
+    begin
+      { 'root' and '.' are shorthands for the root POM }
+      Emit('root', APrefix);
+      Emit('.', APrefix);
       for I := 0 to Tree.Modules.Count - 1 do
       begin
         E := Tree.Modules[I];
@@ -486,6 +490,7 @@ begin
           Name := E.PathComponent;
         Emit(Name, APrefix);
       end;
+    end;
   finally
     Tree.Free;
   end;
@@ -575,6 +580,7 @@ type
   TCompletionState = record
     HasModule:      Boolean;   // --module <name> fully consumed
     ModuleName:     string;    // the name passed to --module
+    IsRootModule:   Boolean;   // module is '.' or 'root' (the root POM)
     HasAllModules:  Boolean;   // --all-modules present
     HasExecute:     Boolean;   // --execute-goals present
     HasGet:         Boolean;   // --get <field> fully consumed
@@ -628,8 +634,9 @@ begin
         We consider the module "set" only after its value has been consumed. }
       if I + 1 < ACword then
       begin
-        Result.HasModule  := True;
-        Result.ModuleName := AWords[I + 1];
+        Result.HasModule    := True;
+        Result.ModuleName   := AWords[I + 1];
+        Result.IsRootModule := (AWords[I + 1] = '.') or (AWords[I + 1] = 'root');
         SkipNext := True;
       end
       else
@@ -927,9 +934,10 @@ begin
       '--add-profile-define',    '--remove-profile-define',
       '--add-profile-option',    '--remove-profile-option',
       '--run',
-      '--rename-module-dir',
       '--execute-goals'
     ], Cur);
+    if not St.IsRootModule then
+      Emit('--rename-module-dir', Cur);
     { POM-only flags: only offer them when the module is actually a POM }
     if ModuleIsPOM(St.ModuleName) then
       EmitArray([
