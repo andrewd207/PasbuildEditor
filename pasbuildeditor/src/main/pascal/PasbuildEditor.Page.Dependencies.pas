@@ -16,7 +16,7 @@ interface
 uses
   Classes, SysUtils,
   TermUI.Menu,
-  PasbuildEditor.ProjectModel,
+  PBLib.ProjectModel,
   PasbuildEditor.UIContext;
 
 { Detail view for a single dependency: version picker + remove.

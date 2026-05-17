@@ -17,7 +17,7 @@ uses
   Classes, SysUtils,
   TermUI.StringUtils,
   TermUI.Menu,
-  PasbuildEditor.ProjectModel,
+  PBLib.ProjectModel,
   PasbuildEditor.UIContext;
 
 procedure RunBootstrapExcludePage(Ctx: TUIContext; P: TProjectCommon);

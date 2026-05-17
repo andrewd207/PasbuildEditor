@@ -13,6 +13,6 @@
     </compilerOptions>
   </build>
   <moduleDependencies>
-    <module>../pasbuildprojectlib</module>
+    <module>../pasbuildeditor-library</module>
   </moduleDependencies>
 </project>

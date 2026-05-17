@@ -15,7 +15,7 @@ interface
 
 uses
   Classes,
-  PasbuildEditor.ProjectModel,
+  PBLib.ProjectModel,
   PasbuildEditor.DependencyResolver,
   PasbuildEditor.Dialog.PackageSearch;
 

@@ -15,7 +15,7 @@ interface
 
 uses
   Classes, SysUtils,
-  PasbuildEditor.ProjectModel;
+  PBLib.ProjectModel;
 
 { Return the <name> from a module's project.xml given its absolute directory,
   falling back to the directory's base name if the file cannot be read. }

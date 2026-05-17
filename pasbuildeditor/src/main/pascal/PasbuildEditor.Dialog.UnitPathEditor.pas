@@ -17,7 +17,7 @@ uses
   Classes, SysUtils,
   TermUI.StringUtils,
   TermUI.Terminal, TermUI.Menu,
-  PasbuildEditor.ProjectModel;
+  PBLib.ProjectModel;
 
 { Single-path editor dialog (path + optional condition).
   ADeleted may be nil; if supplied it is set True when the user chooses Delete.

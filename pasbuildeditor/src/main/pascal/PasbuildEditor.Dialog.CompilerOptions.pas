@@ -29,7 +29,7 @@ uses
   PasbuildEditor.GlobalKeys,
   PasbuildEditor.Compiler,
   PasbuildEditor.Compiler.FPC,
-  PasbuildEditor.ProjectModel,
+  PBLib.ProjectModel,
   TermUI.FilteredPicker,
   TermUI.Application;
 

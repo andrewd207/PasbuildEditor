@@ -16,7 +16,7 @@ interface
 uses
   Classes, SysUtils,
   TermUI.Menu,
-  PasbuildEditor.ProjectModel,
+  PBLib.ProjectModel,
   PasbuildEditor.UIContext;
 
 procedure RunSourcePackagePage(Ctx: TUIContext; P: TProjectCommon);

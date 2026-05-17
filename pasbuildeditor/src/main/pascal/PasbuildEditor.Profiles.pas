@@ -14,7 +14,7 @@ unit PasbuildEditor.Profiles;
 interface
 
 uses
-  Classes, SysUtils, PasbuildEditor.ProjectModel;
+  Classes, SysUtils, PBLib.ProjectModel;
 
 type
   TProfileTemplate = record

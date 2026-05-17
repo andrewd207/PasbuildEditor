@@ -26,6 +26,7 @@
   </test>
   <moduleDependencies>
     <module>../termui</module>
+    <module>../pasbuildeditor-library</module>
   </moduleDependencies>
   <version>1.0.0</version>
 </project>

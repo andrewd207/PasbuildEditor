@@ -14,7 +14,7 @@ program Main;
 uses
   {$IFDEF UNIX}cthreads,{$ENDIF}
   SysUtils, Process,
-  PasbuildEditor.ProjectModel,
+  PBLib.ProjectModel,
   TermUI.Terminal,
   TermUI.Terminal.Platform,
   TermUI.Application,

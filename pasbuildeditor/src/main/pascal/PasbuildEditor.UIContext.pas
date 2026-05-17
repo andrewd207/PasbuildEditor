@@ -16,7 +16,7 @@ interface
 uses
   Classes, SysUtils,
   TermUI.Terminal, TermUI.Menu, TermUI.Application,
-  PasbuildEditor.ProjectModel,
+  PBLib.ProjectModel,
   PasbuildEditor.DependencyResolver;
 
 type

@@ -17,7 +17,7 @@ uses
   Classes, SysUtils,
   TermUI.StringUtils,
   TermUI.Menu,
-  PasbuildEditor.ProjectModel,
+  PBLib.ProjectModel,
   PasbuildEditor.UIContext;
 
 { Editor for a conditional path list (unit paths or include paths).

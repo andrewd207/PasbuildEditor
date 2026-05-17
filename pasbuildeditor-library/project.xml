@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+  <name>pasbuildproject-lib</name>
+  <author>Andrew Haines &lt;andrewd207@github&gt;</author>
+  <license>BSD-3-Clause</license>
+  <build>
+    <packaging>library</packaging>
+  </build>
+</project>

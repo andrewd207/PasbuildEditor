@@ -16,7 +16,7 @@ interface
 uses
   Classes, SysUtils,
   TermUI.Menu,
-  PasbuildEditor.ProjectModel,
+  PBLib.ProjectModel,
   PasbuildEditor.UIContext;
 
 { Build / dependencies aggregate page for TProjectCommon projects. }

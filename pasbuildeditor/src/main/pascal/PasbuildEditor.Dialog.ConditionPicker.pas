@@ -17,7 +17,7 @@ uses
   Classes, SysUtils,
   TermUI.StringUtils,
   TermUI.Terminal, TermUI.Menu,
-  PasbuildEditor.ProjectModel;
+  PBLib.ProjectModel;
 
 { Full-screen condition picker with live filter.
   Returns True and updates ACondition on accept. }

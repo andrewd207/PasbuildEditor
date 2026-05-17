@@ -29,7 +29,7 @@ uses
   Process,
   TermUI.Terminal, TermUI.Menu,
   TermUI.StringUtils,
-  PasbuildEditor.ProjectModel,
+  PBLib.ProjectModel,
   TermUI.Application;
 
 { Parse a line from pasbuild init stdout into a prompt structure.

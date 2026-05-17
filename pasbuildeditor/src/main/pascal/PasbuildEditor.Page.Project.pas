@@ -15,7 +15,7 @@ interface
 
 uses
   Classes, SysUtils,
-  PasbuildEditor.ProjectModel,
+  PBLib.ProjectModel,
   PasbuildEditor.UIContext;
 
 { Run the modules/children page for a POM project. }
