@@ -53,10 +53,10 @@ uses
 const
   MarkerName = '.pb-editor-cmd-setup';
 
-  AllFlags: array[0..46] of string = (
+  AllFlags: array[0..47] of string = (
     '--module', '--list-modules', '--list-goals', '--list-compilers',
     '--execute-goals', '--all-modules',
-    '--set',
+    '--get', '--set',
     '--run',
     '--rename-module-dir',
     '--add-dependency',        '--remove-dependency',
@@ -543,6 +543,7 @@ type
     HasModule:      Boolean;   // --module <name> fully consumed
     HasAllModules:  Boolean;   // --all-modules present
     HasExecute:     Boolean;   // --execute-goals present
+    HasGet:         Boolean;   // --get <field> fully consumed
     InExecuteList:  Boolean;   // cursor is still inside the goals word-list
     InFilterList:   Boolean;   // cursor is still inside the --filter-tags list
     ValueFlag:      string;    // we are completing the first value for this flag
@@ -638,6 +639,17 @@ begin
         Result.ValueFlag := W;
     end
 
+    else if W = '--get' then
+    begin
+      if I + 1 < ACword then
+      begin
+        SkipNext := True;
+        Result.HasGet := True;  { field value consumed — --no-json now valid }
+      end
+      else
+        Result.ValueFlag := W;
+    end
+
     else if (W = '--set') or (W = '--compiler') or (W = '--profile') or
             (W = '--timeout') or (W = '--error-context') or
             (W = '--add-module-dependency') or
@@ -710,10 +722,17 @@ begin
     Exit;
   end;
 
-  if St.ValueFlag = '--set' then
+  if (St.ValueFlag = '--get') or (St.ValueFlag = '--set') then
   begin
-    { List every dotted field path that --set accepts }
+    { List every dotted field path that --get / --set accepts }
     EmitArray(SetFields, Cur);
+    Exit;
+  end;
+
+  if St.HasGet then
+  begin
+    { --get <field> is fully typed; the only useful follow-on flag is --no-json }
+    Emit('--no-json', Cur);
     Exit;
   end;
 
@@ -834,7 +853,7 @@ begin
   begin
     { Stage 2: a module is selected — offer mutations and goal execution }
     EmitArray([
-      '--set',
+      '--get', '--set',
       '--add-dependency',        '--remove-dependency',
       '--add-module-dependency', '--remove-module-dependency',
       '--add-unit-path',         '--remove-unit-path',

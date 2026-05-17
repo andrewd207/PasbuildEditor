@@ -119,6 +119,7 @@ var
   GRenameModuleDir: string;     // --rename-module-dir <new-name>
   GRun:           Boolean;      // --run: execute the built application
   GRunArgs:       TStringList;  // arguments forwarded after --
+  GGetField:      string;       // --get <field>: read a single scalar field
 
 { ---- Arg helpers ---- }
 
@@ -180,6 +181,8 @@ begin
   WriteLn;
   WriteLn('Reading:');
   WriteLn('  (no mutations given) Dump all project fields as JSON.');
+  WriteLn('  --get <field>        Read a single scalar field.  Same field names as --set.');
+  WriteLn('                       Outputs {"field":...,"value":...}; with --no-json prints the value only.');
   WriteLn;
   WriteLn('Scalar fields  (--set <field> <value>):');
   WriteLn('  project.name                     project.version');
@@ -283,6 +286,11 @@ begin
   WriteLn('    pb-editor-cmd --list-goals');
   WriteLn('    pb-editor-cmd --module pasbuildeditor');
   WriteLn;
+  WriteLn('  Read a single field:');
+  WriteLn('    pb-editor-cmd --module pasbuildeditor --get project.version');
+  WriteLn('    pb-editor-cmd --module pasbuildeditor --get project.version --no-json');
+  WriteLn('    VERSION=$(pb-editor-cmd --module myapp --get project.version --no-json)');
+  WriteLn;
   WriteLn('  Set project properties:');
   WriteLn('    pb-editor-cmd --module pasbuildeditor --set project.version 1.2.0');
   WriteLn('    pb-editor-cmd --module pasbuildeditor --set project.author "Jane Smith"');
@@ -365,6 +373,9 @@ begin
 
     else if S = '--module' then
       GModuleName := NextArg(I, '--module')
+
+    else if S = '--get' then
+      GGetField := NextArg(I, '--get')
 
     else if S = '--set' then
     begin
@@ -668,6 +679,55 @@ begin
     if AProject.Profiles[I].ID = AID then
       Exit(AProject.Profiles[I]);
   Result := nil;
+end;
+
+function GetFieldValue(AProject: TProjectBase; const AField: string;
+  out AValue: string): Boolean;
+var
+  Common: TProjectCommon;
+begin
+  Result := True;
+  AValue := '';
+  if      AField = 'project.name'        then AValue := AProject.Name
+  else if AField = 'project.version'     then AValue := AProject.Version
+  else if AField = 'project.author'      then AValue := AProject.Author
+  else if AField = 'project.license'     then AValue := AProject.License
+  else if AField = 'project.description' then AValue := AProject.Description
+  else if AField = 'project.projectUrl'  then AValue := AProject.ProjectUrl
+  else if AField = 'project.repoUrl'     then AValue := AProject.RepoUrl
+  else if AProject is TProjectCommon then
+  begin
+    Common := TProjectCommon(AProject);
+    if      AField = 'project.build.mainSource'         then AValue := Common.MainSource
+    else if AField = 'project.build.executableName'     then AValue := Common.ExecutableName
+    else if AField = 'project.build.outputDirectory'    then AValue := Common.OutputDirectory
+    else if AField = 'project.build.sourceDirectory'    then AValue := Common.SourceDirectory
+    else if AField = 'project.build.manualUnitPaths'    then AValue := BoolToStr(Common.ManualUnitPaths, 'true', 'false')
+    else if AField = 'project.test.testSource'          then AValue := Common.TestSource
+    else if AField = 'project.test.testSourceDirectory' then AValue := Common.TestSourceDirectory
+    else if AField = 'project.test.framework'           then AValue := Common.TestFramework
+    else Result := False;
+  end
+  else
+    Result := False;
+end;
+
+procedure DoGetField(AProject: TProjectBase; const AField: string);
+var
+  Value: string;
+  Obj:   TJSONObject;
+begin
+  if not GetFieldValue(AProject, AField, Value) then
+    Die('Unknown --get field: ' + AField + '. Run --help to see valid fields.', 2);
+  if GNoJson then
+    WriteLn(Value)
+  else
+  begin
+    Obj := TJSONObject.Create;
+    Obj.Add('field', AField);
+    Obj.Add('value', Value);
+    PrintJSON(Obj);
+  end;
 end;
 
 procedure ApplySet(AProject: TProjectBase; const AField, AValue: string);
@@ -2074,6 +2134,14 @@ begin
     end;
 
     try
+      if GGetField <> '' then
+      begin
+        if GMutCount > 0 then
+          Die('--get cannot be combined with mutation flags');
+        DoGetField(Project, GGetField);
+        Halt(0);
+      end;
+
       if GRun then
       begin
         if GMutCount > 0 then
