@@ -53,7 +53,7 @@ uses
 const
   MarkerName = '.pb-editor-cmd-setup';
 
-  AllFlags: array[0..47] of string = (
+  AllFlags: array[0..48] of string = (
     '--module', '--list-modules', '--list-goals', '--list-compilers',
     '--execute-goals', '--all-modules',
     '--get', '--set',
@@ -77,7 +77,7 @@ const
     '--compiler',
     '--timeout',
     '--filter-tags', '--show-summary', '--error-context', '--no-json',
-    '--help', '--help-examples', '--install', '--bash'
+    '--help', '--help-examples', '--help-fields', '--install', '--bash'
   );
 
   SetFields: array[0..14] of string = (
@@ -885,6 +885,7 @@ begin
     '--list-compilers',
     '--help',
     '--help-examples',
+    '--help-fields',
     '--install'
   ], Cur);
 end;

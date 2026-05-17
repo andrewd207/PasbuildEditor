@@ -99,6 +99,7 @@ var
   GListCompilers:  Boolean;
   GShowHelp:      Boolean;
   GShowExamples:  Boolean;
+  GShowFields:    Boolean;
   GMutations:     array of TMutation;
   GMutCount:      Integer;
   { --execute-goals }
@@ -275,6 +276,33 @@ begin
   WriteLn('  --bash <cword> <words...> Emit bash completion candidates (used by the shell hook)');
   WriteLn;
   WriteLn('Run --help-examples for usage examples.');
+  WriteLn('Run --help-fields to list all readable/writable field names.');
+end;
+
+procedure PrintFields;
+begin
+  WriteLn('Fields supported by --get and --set:');
+  WriteLn;
+  WriteLn('  Common (all packaging types):');
+  WriteLn('    project.name');
+  WriteLn('    project.version');
+  WriteLn('    project.author');
+  WriteLn('    project.license');
+  WriteLn('    project.description');
+  WriteLn('    project.projectUrl');
+  WriteLn('    project.repoUrl');
+  WriteLn;
+  WriteLn('  Build (application / library):');
+  WriteLn('    project.build.mainSource');
+  WriteLn('    project.build.executableName');
+  WriteLn('    project.build.outputDirectory');
+  WriteLn('    project.build.sourceDirectory');
+  WriteLn('    project.build.manualUnitPaths    (true / false)');
+  WriteLn;
+  WriteLn('  Test (application / library):');
+  WriteLn('    project.test.testSource');
+  WriteLn('    project.test.testSourceDirectory');
+  WriteLn('    project.test.framework           (auto / fpcunit / fptest)');
 end;
 
 procedure PrintExamples;
@@ -367,6 +395,9 @@ begin
 
     else if S = '--help-examples' then
       GShowExamples := True
+
+    else if S = '--help-fields' then
+      GShowFields := True
 
     else if S = '--list-modules' then
       GListModules := True
@@ -2013,6 +2044,12 @@ begin
   if GShowExamples then
   begin
     PrintExamples;
+    Halt(0);
+  end;
+
+  if GShowFields then
+  begin
+    PrintFields;
     Halt(0);
   end;
 
