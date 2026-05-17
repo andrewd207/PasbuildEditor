@@ -46,7 +46,7 @@ implementation
 uses
   SysUtils, Classes,
   {$IFDEF UNIX}termio, BaseUnix,{$ENDIF}
-  PBLib.ProjectTree;
+  PBLib.ProjectModel, PBLib.ProjectTree;
 
 { ---- Constants ---- }
 
@@ -534,6 +534,39 @@ begin
   end;
 end;
 
+{ Return true if the named module is a POM project, by loading its project.xml.
+  Returns false on any error (not found, not a POM, load failure). }
+function ModuleIsPOM(const AModuleName: string): Boolean;
+var
+  Tree: TProjectTree;
+  ProjFile: string;
+  Proj: TProjectBase;
+begin
+  Result := False;
+  Tree := TProjectTree.Create;
+  try
+    if not Tree.LoadFromDir(GetCurrentDir) then Exit;
+    { '.' and 'root' are shorthands for the root POM, which is always a POM }
+    if (AModuleName = '.') or (AModuleName = 'root') then
+    begin
+      Result := FileExists(Tree.RootPOMFile);
+      Exit;
+    end;
+    if not Tree.FindModule(AModuleName, ProjFile) then Exit;
+    try
+      Proj := TProjectBase.LoadFromFile(ProjFile);
+      try
+        Result := Proj is TProjectPOM;
+      finally
+        Proj.Free;
+      end;
+    except
+    end;
+  finally
+    Tree.Free;
+  end;
+end;
+
 { Parsed state of everything typed on the command line so far.
   We scan left-to-right through the already-typed words to figure out
   which "stage" the user is in, so we only offer flags that are actually
@@ -541,9 +574,12 @@ end;
 type
   TCompletionState = record
     HasModule:      Boolean;   // --module <name> fully consumed
+    ModuleName:     string;    // the name passed to --module
     HasAllModules:  Boolean;   // --all-modules present
     HasExecute:     Boolean;   // --execute-goals present
     HasGet:         Boolean;   // --get <field> fully consumed
+    IsDone:         Boolean;   // command is complete — no further flags make sense
+                               // (--list-*, or --rename-module-dir <value> consumed)
     InExecuteList:  Boolean;   // cursor is still inside the goals word-list
     InFilterList:   Boolean;   // cursor is still inside the --filter-tags list
     ValueFlag:      string;    // we are completing the first value for this flag
@@ -592,7 +628,8 @@ begin
         We consider the module "set" only after its value has been consumed. }
       if I + 1 < ACword then
       begin
-        Result.HasModule := True;
+        Result.HasModule  := True;
+        Result.ModuleName := AWords[I + 1];
         SkipNext := True;
       end
       else
@@ -600,6 +637,24 @@ begin
     end
     else if W = '--all-modules' then
       Result.HasAllModules := True
+
+    { Listing flags are complete commands — nothing meaningful follows them }
+    else if (W = '--list-modules') or (W = '--list-goals') or
+            (W = '--list-compilers') then
+      Result.IsDone := True
+
+    { --rename-module-dir is a standalone operation; once its value is consumed
+      the command is complete }
+    else if W = '--rename-module-dir' then
+    begin
+      if I + 1 < ACword then
+      begin
+        SkipNext := True;
+        Result.IsDone := True;
+      end
+      else
+        Result.ValueFlag := W;
+    end
 
     else if W = '--execute-goals' then
     begin
@@ -704,6 +759,9 @@ begin
 
   { Understand what the user has already typed }
   St := BuildState(ACword, AWords);
+
+  { Commands that take no further arguments once complete }
+  if St.IsDone then Exit;
 
   { ── Value completions ──────────────────────────────────────────────────
     If we are filling in the argument to a specific flag, offer the right
@@ -854,7 +912,8 @@ begin
 
   if St.HasModule then
   begin
-    { Stage 2: a module is selected — offer mutations and goal execution }
+    { Stage 2: a module is selected — offer mutations and goal execution.
+      POM-only flags are only shown when the selected module is actually a POM. }
     EmitArray([
       '--get', '--set',
       '--add-dependency',        '--remove-dependency',
@@ -869,11 +928,15 @@ begin
       '--add-profile-option',    '--remove-profile-option',
       '--run',
       '--rename-module-dir',
-      '--add-pom-module',        '--remove-pom-module',
-      '--add-new-module',
-      '--inactive',
       '--execute-goals'
     ], Cur);
+    { POM-only flags: only offer them when the module is actually a POM }
+    if ModuleIsPOM(St.ModuleName) then
+      EmitArray([
+        '--add-pom-module', '--remove-pom-module',
+        '--add-new-module',
+        '--inactive'
+      ], Cur);
     Exit;
   end;
 
