@@ -491,6 +491,49 @@ begin
   end;
 end;
 
+{ Emit package names from the local pasbuild repository (~/.pasbuild/repository/).
+  Each subdirectory is a package name. }
+procedure EmitRepoPackages(const APrefix: string);
+var
+  RepoDir: string;
+  SR: TSearchRec;
+begin
+  RepoDir := IncludeTrailingPathDelimiter(GetUserDir) +
+             '.pasbuild' + PathDelim + 'repository';
+  if not DirectoryExists(RepoDir) then Exit;
+  if FindFirst(RepoDir + PathDelim + '*', faDirectory, SR) = 0 then
+  try
+    repeat
+      if (SR.Name = '.') or (SR.Name = '..') then Continue;
+      if (SR.Attr and faDirectory) <> 0 then
+        Emit(SR.Name, APrefix);
+    until FindNext(SR) <> 0;
+  finally
+    FindClose(SR);
+  end;
+end;
+
+{ Emit version strings available for APackage in the local repository. }
+procedure EmitRepoVersions(const APackage, APrefix: string);
+var
+  PkgDir: string;
+  SR: TSearchRec;
+begin
+  PkgDir := IncludeTrailingPathDelimiter(GetUserDir) +
+            '.pasbuild' + PathDelim + 'repository' + PathDelim + APackage;
+  if not DirectoryExists(PkgDir) then Exit;
+  if FindFirst(PkgDir + PathDelim + '*', faDirectory, SR) = 0 then
+  try
+    repeat
+      if (SR.Name = '.') or (SR.Name = '..') then Continue;
+      if (SR.Attr and faDirectory) <> 0 then
+        Emit(SR.Name, APrefix);
+    until FindNext(SR) <> 0;
+  finally
+    FindClose(SR);
+  end;
+end;
+
 { Parsed state of everything typed on the command line so far.
   We scan left-to-right through the already-typed words to figure out
   which "stage" the user is in, so we only offer flags that are actually
@@ -502,7 +545,9 @@ type
     HasExecute:     Boolean;   // --execute-goals present
     InExecuteList:  Boolean;   // cursor is still inside the goals word-list
     InFilterList:   Boolean;   // cursor is still inside the --filter-tags list
-    ValueFlag:      string;    // we are completing the value for this flag
+    ValueFlag:      string;    // we are completing the first value for this flag
+    ValueFlag2:     string;    // we are completing the second value (e.g. version after package name)
+    DepName:        string;    // the package name already typed for --add-dependency
     LastGoal:       string;    // the goal immediately before the cursor (suppress repeat)
   end;
 
@@ -570,9 +615,32 @@ begin
     else if Result.InExecuteList then
       Result.LastGoal := W
     { Single-value flags: the word that follows is a value, not a flag }
+    { --add-dependency takes two words: package name then version.
+      Track both so we can offer repo names for the first and repo versions
+      for the second. }
+    else if W = '--add-dependency' then
+    begin
+      if I + 2 < ACword then
+      begin
+        { Both values already consumed — skip both }
+        SkipNext := True;  { skips name }
+        Inc(I);            { pre-advance so SkipNext skips version }
+      end
+      else if I + 1 < ACword then
+      begin
+        { Name consumed, version is the cursor word }
+        Result.DepName   := AWords[I + 1];
+        Result.ValueFlag2 := W;
+        SkipNext := True;
+      end
+      else
+        { Neither consumed yet — cursor word is the name }
+        Result.ValueFlag := W;
+    end
+
     else if (W = '--set') or (W = '--compiler') or (W = '--profile') or
             (W = '--timeout') or (W = '--error-context') or
-            (W = '--add-dependency') or (W = '--add-module-dependency') or
+            (W = '--add-module-dependency') or
             (W = '--add-unit-path') or (W = '--add-include-path') or
             (W = '--add-define') or (W = '--add-compiler-option') or
             (W = '--add-bootstrap-exclude') or
@@ -661,6 +729,20 @@ begin
   begin
     { Lines of context around each ERROR line — small numbers make sense }
     EmitArray(['1', '2', '3', '5', '10'], Cur);
+    Exit;
+  end;
+
+  if St.ValueFlag = '--add-dependency' then
+  begin
+    { First word after --add-dependency: offer package names from the local repo }
+    EmitRepoPackages(Cur);
+    Exit;
+  end;
+
+  if St.ValueFlag2 = '--add-dependency' then
+  begin
+    { Second word: offer versions available for the already-typed package name }
+    EmitRepoVersions(St.DepName, Cur);
     Exit;
   end;
 

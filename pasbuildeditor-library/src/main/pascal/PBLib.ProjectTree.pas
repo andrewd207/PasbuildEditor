@@ -121,6 +121,17 @@ begin
   end;
 end;
 
+{ Return path to project.xml if ADir contains any pasbuild project, else ''. }
+function FindAnyProjectInDir(const ADir: string): string;
+var
+  F: string;
+begin
+  Result := '';
+  F := IncludeTrailingPathDelimiter(ADir) + 'project.xml';
+  if FileExists(F) then
+    Result := F;
+end;
+
 { ---- TProjectTree ---- }
 
 constructor TProjectTree.Create;
@@ -137,8 +148,9 @@ end;
 
 function TProjectTree.LoadFromDir(const ADir: string): Boolean;
 var
-  Dir, POMFile, TopLevel: string;
+  Dir, POMFile, TopLevel, AnyFile: string;
   P: TProjectBase;
+  Entry: TModuleEntry;
 begin
   Result := False;
   FModules.Clear;
@@ -173,6 +185,33 @@ begin
       finally
         P.Free;
       end;
+      Exit(True);
+    end;
+    Dir := ExcludeTrailingPathDelimiter(ExtractFilePath(Dir));
+  until Dir = '';
+
+  { Fallback: standalone project with no POM parent.
+    Walk up from ADir looking for any project.xml; treat it as the sole module. }
+  Dir := ExcludeTrailingPathDelimiter(ExpandFileName(ADir));
+  repeat
+    AnyFile := FindAnyProjectInDir(Dir);
+    if AnyFile <> '' then
+    begin
+      FRootPOMFile := AnyFile;
+      Entry := TModuleEntry.Create;
+      Entry.PathComponent := '.';
+      Entry.ModuleDir     := Dir;
+      Entry.ProjectFile   := AnyFile;
+      try
+        P := TProjectBase.LoadFromFile(AnyFile);
+        try
+          Entry.ProjectName := P.Name;
+        finally
+          P.Free;
+        end;
+      except
+      end;
+      FModules.Add(Entry);
       Exit(True);
     end;
     Dir := ExcludeTrailingPathDelimiter(ExtractFilePath(Dir));

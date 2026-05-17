@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, fpcunit, testregistry,
-  PasbuildEditor.ProjectModel;
+  PBLib.ProjectModel;
 
 type
   TProjectModelTests = class(TTestCase)

@@ -2000,6 +2000,10 @@ begin
       Halt(0);
     end;
 
+    { Auto-select when there is exactly one module (standalone project, no POM). }
+    if (GModuleName = '') and (Tree.Modules.Count = 1) and not GAllModules then
+      GModuleName := Tree.Modules[0].PathComponent;
+
     if GModuleName = '' then
     begin
       if GAllModules and (GExecuteGoals.Count > 0) then
