@@ -1,0 +1,351 @@
+= pb-editor-cmd
+:toc: left
+:toc-title: Contents
+:toclevels: 2
+
+Non-interactive command-line interface for reading and mutating pasbuild `project.xml` files.
+All output is JSON so that scripts and tools can consume it reliably.
+
+== Overview
+
+`pb-editor-cmd` is a sibling to `pb-editor` (the terminal UI editor).
+It uses the same `pasbuildprojectlib` data model and is intended for use in
+shell scripts, CI pipelines, and editor integrations where a human is not
+driving the interaction.
+
+Running `pb-editor-cmd` with no mutations prints the selected module's full
+project state as JSON.  Passing one or more mutation flags modifies the
+`project.xml` on disk and then prints the updated state with `"changed": true`
+in the output.
+
+Error responses also come out as JSON:
+
+[source,json]
+----
+{ "error": "Module not found: foo", "availableModules": ["termui", "pasbuildeditor"] }
+----
+
+=== Exit codes
+
+[cols="1,3"]
+|===
+|Code |Meaning
+
+|0 |Success
+|1 |Error (bad arguments, module not found, write failure, etc.)
+|2 |Validation error (known field, invalid value)
+|===
+
+=== Output streams
+
+Standard output (`stdout`) always contains exactly one JSON object — either
+the project state or an error.  Status messages emitted during interactive
+sub-processes (e.g. `pasbuild init` when using `--add-new-module`) go to
+`stderr` so tooling can separate them cleanly.
+
+== Module discovery
+
+`pb-editor-cmd` walks up from the current working directory to find the root
+POM `project.xml`, using `git rev-parse --show-toplevel` first and falling
+back to a directory walk.  All modules in the reactor (including nested
+sub-POMs) are scanned.
+
+A module can be addressed by:
+
+* Its directory name as listed in the root POM's `<modules>` section
+  (e.g. `pasbuildeditor`)
+* The `<name>` value from its `project.xml`, if different
+  (e.g. `pasbuildeditor-editor`)
+
+== Usage
+
+[source,sh]
+----
+pb-editor-cmd --module <name> [mutations...]
+pb-editor-cmd --list-modules
+pb-editor-cmd --help
+----
+
+=== List all modules
+
+[source,sh]
+----
+pb-editor-cmd --list-modules
+----
+
+Output includes the directory path component, project name, and absolute path
+to each module's `project.xml`.
+
+=== Read a module
+
+[source,sh]
+----
+pb-editor-cmd --module pasbuildeditor
+----
+
+Prints all project fields as a single JSON object.  No file is written.
+
+== Mutations
+
+Multiple mutation flags can be combined in a single invocation.  They are
+applied left-to-right before writing the file.  The final state is printed
+after all mutations are applied.
+
+=== Scalar fields  (`--set`)
+
+[source,sh]
+----
+pb-editor-cmd --module <name> --set <field> <value>
+----
+
+.Supported fields
+[cols="2,3,1"]
+|===
+|Field |Description |Packaging
+
+|`project.name`               |Project identifier               |all
+|`project.version`            |Semantic version (MAJOR.MINOR.PATCH) |all
+|`project.author`             |Author name                      |all
+|`project.license`            |SPDX license identifier          |all
+|`project.description`        |Short description (editor-only; pasbuild ignores this field) |all
+|`project.projectUrl`         |Project homepage URL             |all
+|`project.repoUrl`            |Repository URL                   |all
+|`project.build.mainSource`   |Entry-point source file          |application
+|`project.build.executableName` |Output executable name (no suffix) |application
+|`project.build.outputDirectory` |Build output directory (default: `target`) |application / library
+|`project.build.sourceDirectory` |Main source directory (default: `src/main/pascal`) |application / library
+|`project.build.manualUnitPaths` |`true` disables auto unit-path scanning |application / library
+|`project.test.testSource`    |Test runner entry-point file     |application / library
+|`project.test.testSourceDirectory` |Test source directory (default: `src/test/pascal`) |application / library
+|`project.test.framework`     |Test framework: `auto`, `fpcunit`, or `fptest` |application / library
+|===
+
+.Examples
+[source,sh]
+----
+pb-editor-cmd --module pasbuildeditor --set project.version 1.2.0
+pb-editor-cmd --module pasbuildeditor --set project.build.executableName my-editor
+pb-editor-cmd --module pasbuildeditor --set project.build.manualUnitPaths true
+----
+
+=== External dependencies
+
+[source,sh]
+----
+pb-editor-cmd --module <name> --add-dependency <dep-name> <version>
+pb-editor-cmd --module <name> --remove-dependency <dep-name>
+----
+
+.Examples
+[source,sh]
+----
+pb-editor-cmd --module pasbuildeditor --add-dependency fpc-fcl-base 3.2.2
+pb-editor-cmd --module pasbuildeditor --remove-dependency fpc-fcl-base
+----
+
+=== Module dependencies
+
+Internal references to other modules in the same reactor.
+
+[source,sh]
+----
+pb-editor-cmd --module <name> --add-module-dependency <relative-path>
+pb-editor-cmd --module <name> --remove-module-dependency <relative-path>
+----
+
+.Example
+[source,sh]
+----
+pb-editor-cmd --module pasbuildeditor --add-module-dependency ../termui
+----
+
+=== Unit paths and include paths
+
+Both flags accept an optional condition as the argument immediately following
+the path.  A condition is any non-flag word (does not start with `--`).
+
+[source,sh]
+----
+pb-editor-cmd --module <name> --add-unit-path <path> [condition]
+pb-editor-cmd --module <name> --remove-unit-path <path>
+pb-editor-cmd --module <name> --add-include-path <path> [condition]
+pb-editor-cmd --module <name> --remove-include-path <path>
+----
+
+.Supported conditions
+* Platform built-ins: `UNIX`, `LINUX`, `FREEBSD`, `DARWIN`, `WINDOWS`, `WIN32`, `WIN64`
+* Any define name (global defines, profile defines, etc.)
+
+.Examples
+[source,sh]
+----
+pb-editor-cmd --module mylib --add-unit-path helpers
+pb-editor-cmd --module mylib --add-unit-path unix-helpers UNIX
+pb-editor-cmd --module mylib --remove-unit-path unix-helpers
+----
+
+=== Compiler defines and options
+
+[source,sh]
+----
+pb-editor-cmd --module <name> --add-define <define>
+pb-editor-cmd --module <name> --remove-define <define>
+pb-editor-cmd --module <name> --add-compiler-option <option>
+pb-editor-cmd --module <name> --remove-compiler-option <option>
+----
+
+.Example
+[source,sh]
+----
+pb-editor-cmd --module pasbuildeditor --add-compiler-option -O2
+pb-editor-cmd --module pasbuildeditor --add-define RELEASE_BUILD
+----
+
+=== Bootstrap exclude (library projects)
+
+Units to exclude from the auto-generated bootstrap program.
+
+[source,sh]
+----
+pb-editor-cmd --module <name> --add-bootstrap-exclude <unit-name>
+pb-editor-cmd --module <name> --remove-bootstrap-exclude <unit-name>
+----
+
+=== Profiles
+
+[source,sh]
+----
+pb-editor-cmd --module <name> --add-profile <id>
+pb-editor-cmd --module <name> --remove-profile <id>
+pb-editor-cmd --module <name> --add-profile-define <id> <define>
+pb-editor-cmd --module <name> --remove-profile-define <id> <define>
+pb-editor-cmd --module <name> --add-profile-option <id> <option>
+pb-editor-cmd --module <name> --remove-profile-option <id> <option>
+----
+
+.Example — create a release profile
+[source,sh]
+----
+pb-editor-cmd --module pasbuildeditor \
+  --add-profile release \
+  --add-profile-define release RELEASE_BUILD \
+  --add-profile-option release -O2 \
+  --add-profile-option release -Xs
+----
+
+=== POM module management
+
+The following flags require `--module` to point to a POM project
+(a project with `<packaging>pom</packaging>`).
+
+[source,sh]
+----
+# Add an existing subdirectory as a child module
+pb-editor-cmd --module <pom-name> --add-pom-module <path>
+pb-editor-cmd --module <pom-name> --add-pom-module <path> --inactive
+
+# Remove a child module (does not delete files)
+pb-editor-cmd --module <pom-name> --remove-pom-module <path>
+
+# Create a new module: mkdir + pasbuild init + add to POM
+pb-editor-cmd --module <pom-name> --add-new-module <path>
+----
+
+`--add-new-module` creates the directory at `<path>` (relative to the POM's
+directory), runs `pasbuild init` there interactively so you can fill in the
+project details, and then adds the new module to the POM's `<modules>` list.
+The init interaction happens on the terminal; status JSON goes to `stderr`
+and the final result JSON goes to `stdout`.
+
+`--inactive` sets `activeByDefault="false"` on the module element so it is
+excluded from default reactor builds.
+
+== JSON output format
+
+=== Project dump
+
+[source,json]
+----
+{
+  "module": "pasbuildeditor",
+  "projectFile": "/path/to/pasbuildeditor/project.xml",
+  "project": {
+    "name": "pasbuildeditor-editor",
+    "version": "1.0.0",
+    "author": "Andrew Haines",
+    "license": "BSD-3-Clause",
+    "description": "",
+    "projectUrl": "",
+    "repoUrl": "",
+    "packaging": "application",
+    "profiles": [],
+    "build": {
+      "mainSource": "Main.pas",
+      "executableName": "pb-editor",
+      "outputDirectory": "target",
+      "sourceDirectory": "src/main/pascal",
+      "manualUnitPaths": false,
+      "defines": [],
+      "compilerOptions": ["-FF", "-gl", "-gw3"],
+      "unitPaths": [],
+      "includePaths": [],
+      "bootstrapExclude": [],
+      "sourcePackageIncludes": [],
+      "resources": { "directory": "", "filtering": true }
+    },
+    "test": {
+      "testSource": "TestRunner.pas",
+      "testSourceDirectory": "src/test/pascal",
+      "framework": "auto",
+      "frameworkOptions": ["--all", "--format=plain"],
+      "resources": { "directory": "", "filtering": false }
+    },
+    "moduleDependencies": ["../termui"],
+    "dependencies": []
+  }
+}
+----
+
+Conditional paths (unit paths and include paths with a `condition` attribute)
+are emitted as objects when a condition is present, or plain strings when
+unconditional:
+
+[source,json]
+----
+"unitPaths": [
+  "helpers",
+  { "path": "unix-helpers", "condition": "UNIX" }
+]
+----
+
+After a mutation the response includes `"changed": true`.
+
+=== Error response
+
+[source,json]
+----
+{
+  "error": "Module not found: foo",
+  "availableModules": ["termui", "pasbuildeditor", "pasbuildeditorcmd"]
+}
+----
+
+== Known limitations and future work
+
+The following are not yet implemented:
+
+* `--validate` — check project integrity (paths exist, semver valid, packaging rules, etc.)
+* `--dry-run` — show what would change without writing `project.xml`
+* `--root <dir>` — override automatic POM detection instead of walking up from cwd
+* `--format text` — human-readable output alternative to JSON
+* Stdin JSON mode — read a batch of mutations from stdin for piped workflows
+* `--set` support for profile fields (`project.profiles.<id>.defines`, etc.)
+* `--set` support for resource fields (`project.build.resources.filtering`, etc.)
+* `--dependency-tree` — emit the full transitive dependency graph as JSON
+
+== Related modules
+
+* `pasbuildprojectlib` — library providing the data model, tree-walker, and
+  JSON serialization used by this tool.  `pb-editor` will be migrated to use
+  this library so tooling and editor share the same implementation.
+* `pasbuildeditor` — interactive terminal UI editor (`pb-editor`).

@@ -9,7 +9,9 @@
   </build>
   <modules>
     <module>termui</module>
+    <module>pasbuildprojectlib</module>
     <module>pasbuildeditor</module>
+    <module>pasbuildeditorcmd</module>
     <module>termui-examples</module>
   </modules>
   <profiles>

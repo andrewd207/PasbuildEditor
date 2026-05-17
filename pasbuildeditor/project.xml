@@ -27,4 +27,5 @@
   <moduleDependencies>
     <module>../termui</module>
   </moduleDependencies>
+  <version>1.0.0</version>
 </project>

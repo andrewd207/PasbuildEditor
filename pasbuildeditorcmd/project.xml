@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+  <name>pasbuildeditor-cmd</name>
+  <author>Andrew Haines</author>
+  <license>BSD-3-Clause</license>
+  <build>
+    <packaging>application</packaging>
+    <mainSource>PBEditorCmd.pas</mainSource>
+    <executableName>pb-editor-cmd</executableName>
+    <compilerOptions>
+      <option>-gl</option>
+      <option>-gw3</option>
+    </compilerOptions>
+  </build>
+  <moduleDependencies>
+    <module>../pasbuildprojectlib</module>
+  </moduleDependencies>
+</project>
