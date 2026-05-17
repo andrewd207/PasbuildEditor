@@ -731,7 +731,10 @@ begin
 
   if St.HasGet then
   begin
-    { --get <field> is fully typed; the only useful follow-on flag is --no-json }
+    { --get <field> is fully typed; the only useful follow-on flag is --no-json,
+      but only if it hasn't been typed already. }
+    for I := 1 to ACword - 1 do
+      if AWords[I] = '--no-json' then Exit;
     Emit('--no-json', Cur);
     Exit;
   end;
