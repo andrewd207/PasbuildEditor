@@ -188,14 +188,10 @@ end;
 procedure TApplication.RepaintActive;
 var
   N, First, I: Integer;
-  UseDirtyRows: Boolean;
 begin
   N := Length(FFormStack);
   if N = 0 then Exit;
   if not AnyInvalidated then Exit;
-  UseDirtyRows := Term.HasDirtyRowHints and (N = 1);
-  if not UseDirtyRows then
-    Term.InvalidateFront;
   { Walk down to find the topmost non-overlay; paint from there upward so all
     overlay layers appear on top of live content. }
   First := N - 1;
@@ -208,10 +204,7 @@ begin
   end;
   if Assigned(FOnPostPaint) then
     FOnPostPaint(Self);
-  if UseDirtyRows then
-    Term.FlushDirtyRows
-  else
-    Term.FlushOutput;
+  Term.FlushOutput;
 end;
 
 procedure TApplication.HandleResize;
@@ -222,6 +215,8 @@ begin
     recalculate from their Side+PeekSize rather than using the passed values. }
   for I := 0 to High(FFormStack) do
     FFormStack[I].SetBounds(1, 1, Term.Width, Term.Height);
+  { Terminal may have cleared the screen on resize; force full redraw. }
+  Term.InvalidateFront;
   if Length(FFormStack) > 0 then
     FFormStack[High(FFormStack)].Invalidate;
 end;
