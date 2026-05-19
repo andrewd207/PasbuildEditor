@@ -198,7 +198,7 @@ begin
       Menu.AddSeparator;
       for I := 0 to P.ModuleDependencies.Count - 1 do
       begin
-        ModPath   := P.ModuleDependencies[I];
+        ModPath   := P.ModuleDependencies[I].Path;
         AbsModDir := ExpandFileName(IncludeTrailingPathDelimiter(ProjectDir) + ModPath);
         ModName   := ModuleNameFromAbsDir(AbsModDir);
         Menu.Add(TMenuItem.Create(ModName, nil, ModPath));
@@ -256,7 +256,7 @@ begin
                   StorePath := ComputeRelativePath(ProjectDir,
                                  ExcludeTrailingPathDelimiter(AbsModDir));
                   if StorePath = '.' then Continue;
-                  Already := P.ModuleDependencies.IndexOf(StorePath) >= 0;
+                  Already := Assigned(P.FindModuleDependency(StorePath));
                   if not Already then
                     SortedMods.Add(ModName + '=' + StorePath);
                 end;
@@ -304,7 +304,7 @@ begin
           end;
           if Assigned(AddSel) then
           begin
-            P.ModuleDependencies.Add(AddSel.Value);
+            P.AddModuleDependency(AddSel.Value, '');
             Ctx.SetModified;
           end;
         finally
@@ -316,10 +316,9 @@ begin
         ModPath := Sel.Value;
         if Confirm('Remove module dependency "' + Sel.Label_ + '"?') then
         begin
-          I := P.ModuleDependencies.IndexOf(ModPath);
-          if I >= 0 then
+          if Assigned(P.FindModuleDependency(ModPath)) then
           begin
-            P.ModuleDependencies.Delete(I);
+            P.RemoveModuleDependencyByPath(ModPath);
             Ctx.SetModified;
           end;
         end;

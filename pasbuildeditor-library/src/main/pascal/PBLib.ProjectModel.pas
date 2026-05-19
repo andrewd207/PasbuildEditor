@@ -58,9 +58,10 @@ type
   public
     Path: string;
     ActiveByDefault: Boolean;
+    Condition: string;
     Node: TDOMNode;
     constructor Create(const APath: string; AActiveByDefault: Boolean = True;
-      ANode: TDOMNode = nil);
+      ANode: TDOMNode = nil; const ACondition: string = '');
   end;
   TModuleList = specialize TFPGObjectList<TModule>;
 
@@ -150,8 +151,8 @@ type
     procedure SaveToNode; override;
     function ProjectType: TProjectType; override;
 
-    function AddModule(const APath: string;
-      AActiveByDefault: Boolean = True): TModule;
+    function AddModule(const APath: string; AActiveByDefault: Boolean = True;
+      const ACondition: string = ''): TModule;
     procedure RemoveModule(AModule: TModule);
 
     { Child project management — AddChildProject takes ownership }
@@ -187,7 +188,7 @@ type
     FFrameworkOptions: TStringList;
     FTestResources: TResourcesConfig;
     { Dependencies }
-    FModuleDependencies: TStringList;
+    FModuleDependencies: TConditionalPathList;
     FDependencies: TDependencyList;
   protected
     procedure LoadBuildFields;
@@ -209,6 +210,9 @@ type
     procedure RemoveIncludePath(APath: TConditionalPath);
     function AddDependency(const AName, AVersion: string): TDependency;
     procedure RemoveDependency(ADep: TDependency);
+    function AddModuleDependency(const APath, ACondition: string): TConditionalPath;
+    procedure RemoveModuleDependencyByPath(const APath: string);
+    function FindModuleDependency(const APath: string): TConditionalPath;
 
     { Build }
     property MainSource: string read FMainSource write FMainSource;
@@ -231,7 +235,7 @@ type
     property FrameworkOptions: TStringList read FFrameworkOptions;
     property TestResources: TResourcesConfig read FTestResources;
     { Dependencies }
-    property ModuleDependencies: TStringList read FModuleDependencies;
+    property ModuleDependencies: TConditionalPathList read FModuleDependencies;
     property Dependencies: TDependencyList read FDependencies;
   end;
 
@@ -399,6 +403,46 @@ begin
   end;
 end;
 
+procedure SyncConditionalModuleDeps(AParent: TDOMNode;
+  APaths: TConditionalPathList);
+var
+  Doc: TXMLDocument;
+  Wrapper, Child, Next: TDOMNode;
+  ModElem: TDOMElement;
+  I: Integer;
+begin
+  Wrapper := AParent.FindNode('moduleDependencies');
+  if APaths.Count = 0 then
+  begin
+    if Assigned(Wrapper) then
+      AParent.RemoveChild(Wrapper);
+    Exit;
+  end;
+  Doc := GetDoc(AParent);
+  if not Assigned(Wrapper) then
+  begin
+    Wrapper := Doc.CreateElement('moduleDependencies');
+    AParent.AppendChild(Wrapper);
+  end;
+  Child := Wrapper.FirstChild;
+  while Assigned(Child) do
+  begin
+    Next := Child.NextSibling;
+    if (Child.NodeType = ELEMENT_NODE) and (Child.NodeName = 'module') then
+      Wrapper.RemoveChild(Child);
+    Child := Next;
+  end;
+  for I := 0 to APaths.Count - 1 do
+  begin
+    ModElem := Doc.CreateElement('module');
+    if APaths[I].Condition <> '' then
+      ModElem.SetAttribute('condition', APaths[I].Condition);
+    ModElem.AppendChild(Doc.CreateTextNode(APaths[I].Path));
+    Wrapper.AppendChild(ModElem);
+    APaths[I].Node := ModElem;
+  end;
+end;
+
 procedure SyncResources(AParent: TDOMNode; ARes: TResourcesConfig);
 var
   Doc: TXMLDocument;
@@ -505,12 +549,13 @@ end;
 { ---- TModule ---- }
 
 constructor TModule.Create(const APath: string; AActiveByDefault: Boolean;
-  ANode: TDOMNode);
+  ANode: TDOMNode; const ACondition: string);
 begin
   inherited Create;
   Path            := APath;
   ActiveByDefault := AActiveByDefault;
   Node            := ANode;
+  Condition       := ACondition;
 end;
 
 { ---- TDependency ---- }
@@ -764,6 +809,7 @@ begin
           Trim(TDOMElement(ModNode).GetAttribute('activeByDefault')));
         if ActiveStr = 'false' then
           Modl.ActiveByDefault := False;
+        Modl.Condition := Trim(TDOMElement(ModNode).GetAttribute('condition'));
       end;
       FModules.Add(Modl);
     end;
@@ -813,6 +859,10 @@ begin
           TDOMElement(Modl.Node).SetAttribute('activeByDefault', 'false')
         else
           TDOMElement(Modl.Node).RemoveAttribute('activeByDefault');
+        if Modl.Condition <> '' then
+          TDOMElement(Modl.Node).SetAttribute('condition', Modl.Condition)
+        else
+          TDOMElement(Modl.Node).RemoveAttribute('condition');
         SetNodeText(Modl.Node, Modl.Path);
       end;
       Child := ModulesNode.FirstChild;
@@ -833,10 +883,10 @@ begin
     FChildProjects[I].SaveToNode;
 end;
 
-function TProjectPOM.AddModule(const APath: string;
-  AActiveByDefault: Boolean): TModule;
+function TProjectPOM.AddModule(const APath: string; AActiveByDefault: Boolean;
+  const ACondition: string): TModule;
 begin
-  Result := TModule.Create(APath, AActiveByDefault, nil);
+  Result := TModule.Create(APath, AActiveByDefault, nil, ACondition);
   FModules.Add(Result);
 end;
 
@@ -878,7 +928,7 @@ begin
   FSourcePackageIncludes := TStringList.Create;
   FFrameworkOptions      := TStringList.Create;
   FTestResources         := TResourcesConfig.Create;
-  FModuleDependencies    := TStringList.Create;
+  FModuleDependencies    := TConditionalPathList.Create(True);
   FDependencies          := TDependencyList.Create(True);
   FOutputDirectory       := 'target';
   FSourceDirectory       := 'src/main/pascal';
@@ -1032,6 +1082,7 @@ procedure TProjectCommon.LoadDependencyFields;
 var
   WrapNode, ItemNode: TDOMNode;
   Dep: TDependency;
+  ModPath, ModCond: string;
   I: Integer;
 begin
   FModuleDependencies.Clear;
@@ -1041,7 +1092,13 @@ begin
     begin
       ItemNode := WrapNode.ChildNodes.Item[I];
       if (ItemNode.NodeName = 'module') and Assigned(ItemNode.FirstChild) then
-        FModuleDependencies.Add(Trim(ItemNode.FirstChild.NodeValue));
+      begin
+        ModPath := Trim(ItemNode.FirstChild.NodeValue);
+        ModCond := '';
+        if ItemNode is TDOMElement then
+          ModCond := Trim(TDOMElement(ItemNode).GetAttribute('condition'));
+        FModuleDependencies.Add(TConditionalPath.Create(ModPath, ModCond, ItemNode));
+      end;
     end;
 
   FDependencies.Clear;
@@ -1131,7 +1188,7 @@ var
 begin
   Doc := GetDoc(FNode);
 
-  SyncStringWrapper(FNode, 'moduleDependencies', 'module', FModuleDependencies);
+  SyncConditionalModuleDeps(FNode, FModuleDependencies);
 
   if FDependencies.Count = 0 then
   begin
@@ -1225,6 +1282,37 @@ begin
   if Assigned(ADep.Node) and Assigned(ADep.Node.ParentNode) then
     ADep.Node.ParentNode.RemoveChild(ADep.Node);
   FDependencies.Remove(ADep);
+end;
+
+function TProjectCommon.AddModuleDependency(const APath,
+  ACondition: string): TConditionalPath;
+begin
+  Result := TConditionalPath.Create(APath, ACondition, nil);
+  FModuleDependencies.Add(Result);
+end;
+
+procedure TProjectCommon.RemoveModuleDependencyByPath(const APath: string);
+var
+  CP: TConditionalPath;
+begin
+  CP := FindModuleDependency(APath);
+  if not Assigned(CP) then Exit;
+  if Assigned(CP.Node) and Assigned(CP.Node.ParentNode) then
+    CP.Node.ParentNode.RemoveChild(CP.Node);
+  FModuleDependencies.Remove(CP);
+end;
+
+function TProjectCommon.FindModuleDependency(const APath: string): TConditionalPath;
+var
+  I: Integer;
+begin
+  Result := nil;
+  for I := 0 to FModuleDependencies.Count - 1 do
+    if FModuleDependencies[I].Path = APath then
+    begin
+      Result := FModuleDependencies[I];
+      Exit;
+    end;
 end;
 
 { ---- TProjectApplication ---- }

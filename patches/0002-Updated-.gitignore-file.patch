@@ -1,0 +1,60 @@
+From d667bc367cd3d8a668884213506d4da2a61d6354 Mon Sep 17 00:00:00 2001
+From: Graeme Geldenhuys <graemeg@gmail.com>
+Date: Tue, 12 May 2026 22:51:42 +0100
+Subject: [PATCH 2/2] Updated .gitignore file
+
+* removed the .inc file
+* added PasBuild's artifacts target/ directory to be excluded
+* and general Pascal project files to ignore
+---
+ .gitignore | 40 +++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 39 insertions(+), 1 deletion(-)
+
+diff --git a/.gitignore b/.gitignore
+index 8bba3bb..581e1f4 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1 +1,39 @@
+-pasbuildeditor/src/main/pascal/PasbuildEditor.Version.inc
++# Lazarus/FPC IDE files
++*.lps
++*.compiled
++fp.ini
++fp.cfg
++fp.dsk
++
++# Compiled Object files
++*.[oa]
++*.ppu
++*.rst
++
++# Executables
++*.cgi
++*.exe
++pasbuild
++
++# Build output directory (PasBuild convention)
++# All build artifacts go here (Maven convention)
++target/
++
++# Documentation generated HTML (AsciiDoc renders)
++docs/*.html
++
++# Logs and backups
++*.log
++*.bak*
++*~
++
++# OS-specific files
++.DS_Store
++Thumbs.db
++
++# Editor files
++*.swp
++*.swo
++.vscode/
++.idea/
++.ide/
+-- 
+2.43.0
+

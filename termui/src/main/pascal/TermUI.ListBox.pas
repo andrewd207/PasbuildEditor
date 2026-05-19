@@ -90,6 +90,7 @@ type
                                               write SetItemEnabled;
     property ItemCount: Integer read GetItemCount;
     property SelectedIndex: Integer read FSel;
+    procedure SelectIndex(AIndex: Integer);
     function SelectedText: string;
 
     property OnSelectionChanged: TListBoxItemEvent read FOnSelectionChanged
@@ -200,6 +201,14 @@ begin
     FEnabled[I] := AValue;
     Invalidate;
   end;
+end;
+
+procedure TListBox.SelectIndex(AIndex: Integer);
+begin
+  if (AIndex < 0) or (AIndex >= FItems.Count) then Exit;
+  FSel := AIndex;
+  EnsureVisible;
+  Invalidate;
 end;
 
 function TListBox.SelectedText: string;

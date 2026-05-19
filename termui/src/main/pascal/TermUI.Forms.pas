@@ -95,6 +95,7 @@ end;
 procedure TForm.AddChild(AControl: TControl);
 var I: Integer;
 begin
+  AControl.SetParent(Self);
   FControls.Add(AControl);
   { Set initial focus to the first focusable control. }
   if FFocusIndex < 0 then

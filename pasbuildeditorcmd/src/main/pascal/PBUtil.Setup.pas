@@ -53,7 +53,7 @@ uses
 const
   MarkerName = '.pb-editor-cmd-setup';
 
-  AllFlags: array[0..48] of string = (
+  AllFlags: array[0..50] of string = (
     '--module', '--list-modules', '--list-goals', '--list-compilers',
     '--execute-goals', '--all-modules',
     '--get', '--set',
@@ -69,6 +69,7 @@ const
     '--add-profile',           '--remove-profile',
     '--add-profile-define',    '--remove-profile-define',
     '--add-profile-option',    '--remove-profile-option',
+    '--get-module-active', '--set-module-active',
     '--add-pom-module',        '--remove-pom-module',
     '--add-new-module',
     '--inactive',
@@ -496,6 +497,41 @@ begin
   end;
 end;
 
+{ Emit child module paths from the POM identified by AModuleName. }
+procedure EmitPOMChildPaths(const AModuleName, APrefix: string);
+var
+  Tree:    TProjectTree;
+  ProjFile: string;
+  Proj:    TProjectBase;
+  POM:     TProjectPOM;
+  I:       Integer;
+begin
+  Tree := TProjectTree.Create;
+  try
+    if not Tree.LoadFromDir(GetCurrentDir) then Exit;
+    if (AModuleName = '.') or (AModuleName = 'root') then
+      ProjFile := Tree.RootPOMFile
+    else if not Tree.FindModule(AModuleName, ProjFile) then
+      Exit;
+    try
+      Proj := TProjectBase.LoadFromFile(ProjFile);
+      try
+        if Proj is TProjectPOM then
+        begin
+          POM := TProjectPOM(Proj);
+          for I := 0 to POM.Modules.Count - 1 do
+            Emit(POM.Modules[I].Path, APrefix);
+        end;
+      finally
+        Proj.Free;
+      end;
+    except
+    end;
+  finally
+    Tree.Free;
+  end;
+end;
+
 { Emit package names from the local pasbuild repository (~/.pasbuild/repository/).
   Each subdirectory is a package name. }
 procedure EmitRepoPackages(const APrefix: string);
@@ -591,6 +627,7 @@ type
     ValueFlag:      string;    // we are completing the first value for this flag
     ValueFlag2:     string;    // we are completing the second value (e.g. version after package name)
     DepName:        string;    // the package name already typed for --add-dependency
+    SetModPath:     string;    // the module path already typed for --set-module-active
     LastGoal:       string;    // the goal immediately before the cursor (suppress repeat)
   end;
 
@@ -698,6 +735,36 @@ begin
       end
       else
         { Neither consumed yet — cursor word is the name }
+        Result.ValueFlag := W;
+    end
+
+    { --get-module-active takes one value (path) then the command is done }
+    else if W = '--get-module-active' then
+    begin
+      if I + 1 < ACword then
+      begin
+        SkipNext := True;
+        Result.IsDone := True;
+      end
+      else
+        Result.ValueFlag := W;
+    end
+
+    { --set-module-active takes two words: module path then true/false }
+    else if W = '--set-module-active' then
+    begin
+      if I + 2 < ACword then
+      begin
+        SkipNext := True;
+        Inc(I);
+      end
+      else if I + 1 < ACword then
+      begin
+        Result.SetModPath  := AWords[I + 1];
+        Result.ValueFlag2  := W;
+        SkipNext := True;
+      end
+      else
         Result.ValueFlag := W;
     end
 
@@ -833,6 +900,24 @@ begin
     Exit;
   end;
 
+  if St.ValueFlag = '--get-module-active' then
+  begin
+    EmitPOMChildPaths(St.ModuleName, Cur);
+    Exit;
+  end;
+
+  if St.ValueFlag = '--set-module-active' then
+  begin
+    EmitPOMChildPaths(St.ModuleName, Cur);
+    Exit;
+  end;
+
+  if St.ValueFlag2 = '--set-module-active' then
+  begin
+    EmitArray(['true', 'false'], Cur);
+    Exit;
+  end;
+
   { ── List-argument completions ──────────────────────────────────────────
     --execute-goals and --filter-tags consume multiple words until the next
     -- flag.  While we are inside those lists keep offering their values. }
@@ -941,6 +1026,7 @@ begin
     { POM-only flags: only offer them when the module is actually a POM }
     if ModuleIsPOM(St.ModuleName) then
       EmitArray([
+        '--get-module-active', '--set-module-active',
         '--add-pom-module', '--remove-pom-module',
         '--add-new-module',
         '--inactive'

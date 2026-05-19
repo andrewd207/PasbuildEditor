@@ -54,6 +54,7 @@ type
     mkAddProfileDefine,     mkRemoveProfileDefine,
     mkAddProfileOption,     mkRemoveProfileOption,
     mkAddPOMModule,         mkRemovePOMModule,
+    mkSetModuleActive,
     mkInitNewModule
   );
 
@@ -120,7 +121,8 @@ var
   GRenameModuleDir: string;     // --rename-module-dir <new-name>
   GRun:           Boolean;      // --run: execute the built application
   GRunArgs:       TStringList;  // arguments forwarded after --
-  GGetField:      string;       // --get <field>: read a single scalar field
+  GGetField:        string;     // --get <field>: read a single scalar field
+  GGetModuleActive: string;     // --get-module-active <path>: read activeByDefault for a POM child
 
 { ---- Arg helpers ---- }
 
@@ -199,7 +201,7 @@ begin
   WriteLn('List mutations:');
   WriteLn('  --add-dependency <name> <version>');
   WriteLn('  --remove-dependency <name>');
-  WriteLn('  --add-module-dependency <path>');
+  WriteLn('  --add-module-dependency <path> [condition]');
   WriteLn('  --remove-module-dependency <path>');
   WriteLn('  --add-unit-path <path> [condition]');
   WriteLn('  --remove-unit-path <path>');
@@ -235,6 +237,11 @@ begin
   WriteLn('    Fails if the target directory already exists.');
   WriteLn;
   WriteLn('POM module management (--module must point to a POM):');
+  WriteLn('  --get-module-active <path>');
+  WriteLn('    Read the activeByDefault flag for a child module.');
+  WriteLn('    Outputs {"module":...,"activeByDefault":...}; with --no-json prints true/false.');
+  WriteLn('  --set-module-active <path> <true|false>');
+  WriteLn('    Set the activeByDefault flag for a child module.');
   WriteLn('  --add-pom-module <path> [--inactive]');
   WriteLn('    Add an existing child module path to the POM.');
   WriteLn('  --remove-pom-module <path>');
@@ -346,6 +353,9 @@ begin
   WriteLn;
   WriteLn('  POM management:');
   WriteLn('    pb-editor-cmd --module . --add-new-module newlib');
+  WriteLn('    pb-editor-cmd --module . --get-module-active termui');
+  WriteLn('    pb-editor-cmd --module . --get-module-active termui --no-json');
+  WriteLn('    pb-editor-cmd --module . --set-module-active termui false');
   WriteLn;
   WriteLn('  Run goals:');
   WriteLn('    pb-editor-cmd --module pasbuildeditor --execute-goals compile');
@@ -426,7 +436,12 @@ begin
       AddMutation(mkRemoveDependency, NextArg(I, '--remove-dependency'), '', '')
 
     else if S = '--add-module-dependency' then
-      AddMutation(mkAddModuleDep, NextArg(I, '--add-module-dependency'), '', '')
+    begin
+      A := NextArg(I, '--add-module-dependency');
+      C := PeekArg(I);
+      if C <> '' then Inc(I);
+      AddMutation(mkAddModuleDep, A, C, '');
+    end
 
     else if S = '--remove-module-dependency' then
       AddMutation(mkRemoveModuleDep, NextArg(I, '--remove-module-dependency'), '', '')
@@ -521,6 +536,18 @@ begin
 
     else if S = '--remove-pom-module' then
       AddMutation(mkRemovePOMModule, NextArg(I, '--remove-pom-module'), '', '')
+
+    else if S = '--set-module-active' then
+    begin
+      A := NextArg(I, '--set-module-active');
+      B := NextArg(I, '--set-module-active <path>');
+      if (LowerCase(B) <> 'true') and (LowerCase(B) <> 'false') then
+        Die('--set-module-active requires "true" or "false" as the second argument');
+      AddMutation(mkSetModuleActive, A, LowerCase(B), '');
+    end
+
+    else if S = '--get-module-active' then
+      GGetModuleActive := NextArg(I, '--get-module-active')
 
     else if S = '--add-new-module' then
       AddMutation(mkInitNewModule, NextArg(I, '--add-new-module'), '', '')
@@ -749,7 +776,7 @@ var
   Obj:   TJSONObject;
 begin
   if not GetFieldValue(AProject, AField, Value) then
-    Die('Unknown --get field: ' + AField + '. Run --help to see valid fields.', 2);
+    Die('Unknown --get field: ' + AField + '. Run --help-fields to see valid fields.', 2);
   if GNoJson then
     WriteLn(Value)
   else
@@ -759,6 +786,34 @@ begin
     Obj.Add('value', Value);
     PrintJSON(Obj);
   end;
+end;
+
+procedure DoGetModuleActive(AProject: TProjectBase; const AModulePath: string);
+var
+  POM: TProjectPOM;
+  I:   Integer;
+  Obj: TJSONObject;
+  Active: Boolean;
+begin
+  if not (AProject is TProjectPOM) then
+    Die('--get-module-active requires a POM project (use --module to select the POM)');
+  POM := TProjectPOM(AProject);
+  for I := 0 to POM.Modules.Count - 1 do
+    if POM.Modules[I].Path = AModulePath then
+    begin
+      Active := POM.Modules[I].ActiveByDefault;
+      if GNoJson then
+        WriteLn(BoolToStr(Active, 'true', 'false'))
+      else
+      begin
+        Obj := TJSONObject.Create;
+        Obj.Add('module', AModulePath);
+        Obj.Add('activeByDefault', Active);
+        PrintJSON(Obj);
+      end;
+      Exit;
+    end;
+  Die('POM module not found: ' + AModulePath);
 end;
 
 procedure ApplySet(AProject: TProjectBase; const AField, AValue: string);
@@ -784,10 +839,10 @@ begin
     else if AField = 'project.test.testSourceDirectory'then Common.TestSourceDirectory := AValue
     else if AField = 'project.test.framework'          then Common.TestFramework      := AValue
     else
-      Die('Unknown --set field: ' + AField + '. Run --help to see valid fields.', 2);
+      Die('Unknown --set field: ' + AField + '. Run --help-fields to see valid fields.', 2);
   end
   else
-    Die('Unknown --set field: ' + AField + '. Run --help to see valid fields.', 2);
+    Die('Unknown --set field: ' + AField + '. Run --help-fields to see valid fields.', 2);
 end;
 
 procedure ApplyMutation(AProject: TProjectBase;
@@ -809,7 +864,7 @@ begin
     mkSet:
     begin
       if not IsKnownSetField(AM.A, AProject) then
-        Die('Unknown --set field: ' + AM.A + '. Run --help to see valid fields.', 2);
+        Die('Unknown --set field: ' + AM.A + '. Run --help-fields to see valid fields.', 2);
       if not ValidateSetField(AM.A, AM.B, AProject, ErrMsg) then
         Die(ErrMsg, 2);
       ApplySet(AProject, AM.A, AM.B);
@@ -844,7 +899,7 @@ begin
     begin
       if not (AProject is TProjectCommon) then
         Die('--add-module-dependency requires an application or library project');
-      TProjectCommon(AProject).ModuleDependencies.Add(AM.A);
+      TProjectCommon(AProject).AddModuleDependency(AM.A, AM.B);
     end;
 
     mkRemoveModuleDep:
@@ -852,10 +907,9 @@ begin
       if not (AProject is TProjectCommon) then
         Die('--remove-module-dependency requires an application or library project');
       Common := TProjectCommon(AProject);
-      I := Common.ModuleDependencies.IndexOf(AM.A);
-      if I < 0 then
+      if not Assigned(Common.FindModuleDependency(AM.A)) then
         Die('Module dependency not found: ' + AM.A);
-      Common.ModuleDependencies.Delete(I);
+      Common.RemoveModuleDependencyByPath(AM.A);
     end;
 
     mkAddUnitPath:
@@ -1031,6 +1085,20 @@ begin
         if POM.Modules[I].Path = AM.A then
         begin
           POM.RemoveModule(POM.Modules[I]);
+          Exit;
+        end;
+      Die('POM module not found: ' + AM.A);
+    end;
+
+    mkSetModuleActive:
+    begin
+      if not (AProject is TProjectPOM) then
+        Die('--set-module-active requires a POM project (use --module to select the POM)');
+      POM := TProjectPOM(AProject);
+      for I := 0 to POM.Modules.Count - 1 do
+        if POM.Modules[I].Path = AM.A then
+        begin
+          POM.Modules[I].ActiveByDefault := LowerCase(AM.B) = 'true';
           Exit;
         end;
       Die('POM module not found: ' + AM.A);
@@ -1859,7 +1927,8 @@ var
   POM: TProjectPOM;
   Proj: TProjectBase;
   Common: TProjectCommon;
-  I, Idx: Integer;
+  CP: TConditionalPath;
+  I: Integer;
   OldRef, NewRef: string;
   ChangedFiles: TStringList;
   OutObj: TJSONObject;
@@ -1925,10 +1994,10 @@ begin
         if Proj is TProjectCommon then
         begin
           Common := TProjectCommon(Proj);
-          Idx := Common.ModuleDependencies.IndexOf(OldRef);
-          if Idx >= 0 then
+          CP := Common.FindModuleDependency(OldRef);
+          if Assigned(CP) then
           begin
-            Common.ModuleDependencies[Idx] := NewRef;
+            CP.Path := NewRef;
             Proj.SaveToFile;
             ChangedFiles.Add(Entry.ProjectFile);
           end;
@@ -2178,6 +2247,14 @@ begin
         if GMutCount > 0 then
           Die('--get cannot be combined with mutation flags');
         DoGetField(Project, GGetField);
+        Halt(0);
+      end;
+
+      if GGetModuleActive <> '' then
+      begin
+        if GMutCount > 0 then
+          Die('--get-module-active cannot be combined with mutation flags');
+        DoGetModuleActive(Project, GGetModuleActive);
         Halt(0);
       end;
 

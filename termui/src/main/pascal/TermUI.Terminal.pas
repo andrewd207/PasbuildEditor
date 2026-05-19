@@ -156,7 +156,7 @@ type
     FCursorWant:    Boolean;   // desired visibility; emitted once by FlushOutput
     FCursorX:       Integer;   // desired cursor display position (set by PlaceCursor)
     FCursorY:       Integer;
-    FDirtyRowHint:  Integer;   // -1 = full flush; >=1 = only this screen row changed
+    FDirtyRows: array of Boolean;  // 0-based; FDirtyRows[Y-1] = True → row Y needs FlushRow
 
     procedure AllocBuffers(W, H: Integer);
     procedure BlankBuffer(var Buf: TScreenBuffer);
@@ -208,11 +208,13 @@ type
       screen that was partially updated by an inline editor. }
     procedure InvalidateFront;
 
-    { Signal that only one screen row (1-based) changed this frame.
-      Application.RepaintActive reads this and calls FlushRow instead of
-      FlushOutput, avoiding full-screen cursor sweep. Pass -1 to clear. }
+    { Mark a single screen row (1-based) as needing a FlushRow this frame.
+      Calls outside 1..Height are silently ignored. }
     procedure HintDirtyRow(ARow: Integer);
-    function  TakeDirtyRowHint: Integer;
+    { True if any rows were marked dirty via HintDirtyRow. }
+    function  HasDirtyRowHints: Boolean;
+    { Flush each dirty row and clear its flag.  Call after painting. }
+    procedure FlushDirtyRows;
 
     { Set where the visible terminal cursor should appear after FlushOutput.
       Separate from GotoXY (the drawing pen) so that subsequent paint calls
@@ -284,6 +286,8 @@ begin
   FBufH := H;
   SetLength(FBack,  W * H);
   SetLength(FFront, W * H);
+  SetLength(FDirtyRows, H);
+  FillChar(FDirtyRows[0], H * SizeOf(Boolean), 0);
   BlankBuffer(FBack);
   InvalidateFront;  { mark every front cell dirty so the first flush redraws all }
 end;
@@ -319,7 +323,6 @@ begin
   FCurX  := 1; FCurY  := 1;
   FCursorX := 1; FCursorY := 1;
   FCurFG := clDefault; FCurBG := clDefault; FCurUL := False;
-  FDirtyRowHint := -1;
   W := Width; H := Height;
   if W <= 0 then W := 80;
   if H <= 0 then H := 24;
@@ -595,13 +598,27 @@ end;
 
 procedure TTerminal.HintDirtyRow(ARow: Integer);
 begin
-  FDirtyRowHint := ARow;
+  if (ARow >= 1) and (ARow <= Length(FDirtyRows)) then
+    FDirtyRows[ARow - 1] := True;
 end;
 
-function TTerminal.TakeDirtyRowHint: Integer;
+function TTerminal.HasDirtyRowHints: Boolean;
+var I: Integer;
 begin
-  Result := FDirtyRowHint;
-  FDirtyRowHint := -1;
+  for I := 0 to High(FDirtyRows) do
+    if FDirtyRows[I] then Exit(True);
+  Result := False;
+end;
+
+procedure TTerminal.FlushDirtyRows;
+var I: Integer;
+begin
+  for I := 0 to High(FDirtyRows) do
+    if FDirtyRows[I] then
+    begin
+      FlushRow(I + 1);
+      FDirtyRows[I] := False;
+    end;
 end;
 
 procedure TTerminal.PlaceCursor(X, Y: Integer);

@@ -67,13 +67,18 @@ begin
 end;
 
 procedure TTabContainer.SetActiveTab(AIndex: Integer);
+var Prev: Integer;
 begin
   if (AIndex < 0) or (AIndex >= FChildCount) then Exit;
   if AIndex = FFocusIndex then Exit;
+  Prev := FFocusIndex;
   FFocusIndex := AIndex;
+  if (Prev >= 0) and (Prev < FChildCount) then
+    FChildren[Prev].Control.LoseFocus;
   ApplyVisibility;
   ArrangeChildren;
   Invalidate;
+  FChildren[FFocusIndex].Control.GainFocus;
   if Assigned(FOnTabChanged) then FOnTabChanged(Self);
 end;
 

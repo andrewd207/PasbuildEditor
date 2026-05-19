@@ -117,7 +117,7 @@ begin
         DepNames := TStringList.Create;
         try
           for DI := 0 to P.ModuleDependencies.Count - 1 do
-            DepNames.Add(P.ModuleDependencies[DI]);
+            DepNames.Add(P.ModuleDependencies[DI].Path);
           if DepNames.Count = 0 then DepVal := '(none)'
           else DepVal := JoinTruncated(DepNames, ', ', Term.Width - 26);
         finally

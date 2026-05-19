@@ -188,18 +188,14 @@ end;
 procedure TApplication.RepaintActive;
 var
   N, First, I: Integer;
-  DirtyRow: Integer;
+  UseDirtyRows: Boolean;
 begin
   N := Length(FFormStack);
   if N = 0 then Exit;
   if not AnyInvalidated then Exit;
-  DirtyRow := Term.TakeDirtyRowHint;
-  { Full repaint needed when row hint is absent or overlays are active. }
-  if (DirtyRow < 0) or (N > 1) then
-  begin
+  UseDirtyRows := Term.HasDirtyRowHints and (N = 1);
+  if not UseDirtyRows then
     Term.InvalidateFront;
-    DirtyRow := -1;
-  end;
   { Walk down to find the topmost non-overlay; paint from there upward so all
     overlay layers appear on top of live content. }
   First := N - 1;
@@ -212,8 +208,8 @@ begin
   end;
   if Assigned(FOnPostPaint) then
     FOnPostPaint(Self);
-  if DirtyRow >= 0 then
-    Term.FlushRow(DirtyRow)
+  if UseDirtyRows then
+    Term.FlushDirtyRows
   else
     Term.FlushOutput;
 end;

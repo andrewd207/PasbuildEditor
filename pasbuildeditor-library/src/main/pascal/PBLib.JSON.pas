@@ -123,6 +123,7 @@ begin
     Item := TJSONObject.Create;
     Item.Add('path', APOM.Modules[I].Path);
     Item.Add('activeByDefault', APOM.Modules[I].ActiveByDefault);
+    Item.Add('condition', APOM.Modules[I].Condition);
     Result.Add(Item);
   end;
 end;
@@ -132,6 +133,8 @@ function ProjectToJSON(AProject: TProjectBase;
 var
   ProjectObj, BuildObj, TestObj: TJSONObject;
   Common: TProjectCommon;
+  ModDepPaths: TStringList;
+  MDIdx: Integer;
 begin
   Result := TJSONObject.Create;
   if AModuleName <> '' then
@@ -179,7 +182,14 @@ begin
     TestObj.Add('resources',           ResourcesConfigToJSON(Common.TestResources));
     ProjectObj.Add('test', TestObj);
 
-    ProjectObj.Add('moduleDependencies', StringListToArray(Common.ModuleDependencies));
+    ModDepPaths := TStringList.Create;
+    try
+      for MDIdx := 0 to Common.ModuleDependencies.Count - 1 do
+        ModDepPaths.Add(Common.ModuleDependencies[MDIdx].Path);
+      ProjectObj.Add('moduleDependencies', StringListToArray(ModDepPaths));
+    finally
+      ModDepPaths.Free;
+    end;
     ProjectObj.Add('dependencies',       DependenciesToArray(Common.Dependencies));
   end;
 

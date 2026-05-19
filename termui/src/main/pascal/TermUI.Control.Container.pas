@@ -76,6 +76,8 @@ type
     function  DoHelp: Boolean; override;
     procedure DoBoundsChanged; override;
     procedure ArrangeChildren; virtual; abstract;
+    procedure DoGainFocus; override;
+    procedure DoLoseFocus; override;
   public
     destructor Destroy; override;
 
@@ -171,6 +173,7 @@ end;
 procedure TMultiContainerControl.AddChild(AControl: TControl);
 var E: TChildEntry;
 begin
+  AControl.SetParent(Self);
   E.Control   := AControl;
   E.Hint      := lhStretch;
   E.FixedSize := 0;
@@ -185,6 +188,7 @@ end;
 procedure TMultiContainerControl.AddFixedChild(AControl: TControl; AFixedSize: Integer);
 var E: TChildEntry;
 begin
+  AControl.SetParent(Self);
   E.Control   := AControl;
   E.Hint      := lhFixed;
   E.FixedSize := AFixedSize;
@@ -230,15 +234,39 @@ begin
 end;
 
 procedure TMultiContainerControl.FocusNext;
+var Prev: Integer;
 begin
-  if FChildCount > 0 then
-    FFocusIndex := NextFocusable(FFocusIndex, +1);
+  if FChildCount = 0 then Exit;
+  Prev := FFocusIndex;
+  FFocusIndex := NextFocusable(FFocusIndex, +1);
+  if (Prev >= 0) and (Prev < FChildCount) and (Prev <> FFocusIndex) then
+    FChildren[Prev].Control.LoseFocus;
+  if (FFocusIndex >= 0) and (FFocusIndex < FChildCount) then
+    FChildren[FFocusIndex].Control.GainFocus;
 end;
 
 procedure TMultiContainerControl.FocusPrev;
+var Prev: Integer;
 begin
-  if FChildCount > 0 then
-    FFocusIndex := NextFocusable(FFocusIndex, -1);
+  if FChildCount = 0 then Exit;
+  Prev := FFocusIndex;
+  FFocusIndex := NextFocusable(FFocusIndex, -1);
+  if (Prev >= 0) and (Prev < FChildCount) and (Prev <> FFocusIndex) then
+    FChildren[Prev].Control.LoseFocus;
+  if (FFocusIndex >= 0) and (FFocusIndex < FChildCount) then
+    FChildren[FFocusIndex].Control.GainFocus;
+end;
+
+procedure TMultiContainerControl.DoGainFocus;
+begin
+  if (FFocusIndex >= 0) and (FFocusIndex < FChildCount) then
+    FChildren[FFocusIndex].Control.GainFocus;
+end;
+
+procedure TMultiContainerControl.DoLoseFocus;
+begin
+  if (FFocusIndex >= 0) and (FFocusIndex < FChildCount) then
+    FChildren[FFocusIndex].Control.LoseFocus;
 end;
 
 procedure TMultiContainerControl.DoBoundsChanged;

@@ -43,6 +43,9 @@ type
   protected
     procedure DoPaint; override;
     function  DoKeyDown(var Key: TKeyEvent): Boolean; override;
+    procedure Invalidate; override;
+    procedure DoGainFocus; override;
+    procedure DoLoseFocus; override;
   public
     constructor Create; override;
     procedure Clear;
@@ -140,9 +143,11 @@ begin
     Term.WriteStr(' ');
 
   Term.ResetColors;
-  Term.ShowCursor;
-  { FCur - FScroll is 0-based display offset; +1 converts to 1-based GotoLocal. }
-  GotoLocal(FCur - FScroll + 1, 1);
+  if ShowCursor then
+  begin
+    Term.ShowCursor;
+    Term.PlaceCursor(Left + (FCur - FScroll), Top);
+  end;
   inherited DoPaint;
 end;
 
@@ -231,6 +236,26 @@ begin
   FScroll := 0;
   Invalidate;
   if Assigned(FOnChange) then FOnChange(Self);
+end;
+
+procedure TTextEdit.DoGainFocus;
+begin
+  ShowCursor := True;
+  Invalidate;
+end;
+
+procedure TTextEdit.DoLoseFocus;
+begin
+  ShowCursor := False;
+  Term.HideCursor;
+  Invalidate;
+end;
+
+procedure TTextEdit.Invalidate;
+begin
+  inherited Invalidate;
+  if Top > 0 then
+    Term.HintDirtyRow(Top);
 end;
 
 end.

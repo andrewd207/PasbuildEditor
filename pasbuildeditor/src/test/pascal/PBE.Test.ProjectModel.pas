@@ -254,7 +254,7 @@ begin
   P := TProjectCommon(TProjectBase.LoadFromFile(Fixture('application.xml')));
   try
     AssertEquals('moduleDep count', 1, P.ModuleDependencies.Count);
-    AssertEquals('moduleDep[0]', '../somelib', P.ModuleDependencies[0]);
+    AssertEquals('moduleDep[0]', '../somelib', P.ModuleDependencies[0].Path);
   finally P.Free; end;
 end;
 

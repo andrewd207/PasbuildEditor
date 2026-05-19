@@ -54,6 +54,7 @@ type
     FEnabled:          Boolean;
     FFocusable:        Boolean;
     FInvalidated:      Boolean;
+    FParent:           TControl;
     FForeColor:        TColor;
     FBackColor:        TColor;
     FOnKeyDown:        TKeyDownEvent;
@@ -99,6 +100,7 @@ type
     { Store new bounds, call DoBoundsChanged, fire OnBoundsChanged, Invalidate. }
     procedure SetBounds(ALeft, ATop, AWidth, AHeight: Integer); virtual;
     procedure Invalidate; virtual;
+    procedure SetParent(AParent: TControl);
 
     { Record the control's logical cursor position (coordinates are
       subclass-defined — e.g. line/col for a text editor, item index for a
@@ -226,7 +228,15 @@ end;
 
 procedure TControl.Invalidate;
 begin
+  if FInvalidated then Exit; // already marked; parent already notified — break the cycle
   FInvalidated := True;
+  if Assigned(FParent) then
+    FParent.Invalidate;
+end;
+
+procedure TControl.SetParent(AParent: TControl);
+begin
+  FParent := AParent;
 end;
 
 procedure TControl.GotoLocal(AX, AY: Integer);
