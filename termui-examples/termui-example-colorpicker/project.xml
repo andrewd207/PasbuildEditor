@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+  <name>termui-example-colorpicker</name>
+  <author>Andrew Haines</author>
+  <license>BSD-3-Clause</license>
+  <build>
+    <mainSource>Main.pas</mainSource>
+    <executableName>termui-example-colorpicker</executableName>
+    <packaging>application</packaging>
+    <compilerOptions>
+      <option>-gl</option>
+      <option>-gw3</option>
+    </compilerOptions>
+  </build>
+  <moduleDependencies>
+    <module>../../termui</module>
+  </moduleDependencies>
+</project>

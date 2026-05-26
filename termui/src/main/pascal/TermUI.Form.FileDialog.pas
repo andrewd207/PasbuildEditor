@@ -42,7 +42,8 @@ interface
 uses
   Classes, SysUtils, fpMasks,
   TermUI.StringUtils, TermUI.Terminal,
-  TermUI.Control, TermUI.Control.ComboBox, TermUI.Forms, TermUI.Application, TermUI.Menu;
+  TermUI.Control, TermUI.Control.ComboBox, TermUI.Control.LineEditor,
+  TermUI.Forms, TermUI.Application, TermUI.Menu;
 
 type
   TFileDialogMode = (fdOpen, fdSave, fdSelectDir);
@@ -67,8 +68,7 @@ type
     FFileFilter:  string;                { glob pattern e.g. *.pas;*.pp }
     FSel:         Integer;
     FTopRow:      Integer;
-    FFilename:    string;
-    FFilenameCur: Integer;
+    FFilenameEdit: TTextEdit;       { child — owns the filename text + cursor }
     FFocus:       TFocus;
     FShowHidden:   Boolean;
     FAccepted:     Boolean;
@@ -97,19 +97,14 @@ type
 
     procedure DrawPath;
     procedure DrawList;
-    procedure DrawFilenameField;
+    procedure DrawFilenameLabel;
     procedure DrawHintBar;
     procedure PlaceCursor;
 
-    procedure FilenameInsert(ACh: TUTF8Char);
-    procedure FilenameBackspace;
-    procedure FilenameDelete;
-    procedure FilenameMoveLeft;
-    procedure FilenameMoveRight;
-    procedure FilenameHome;
-    procedure FilenameEnd;
     function  FieldLabelWidth: Integer;
-    procedure FilenameCalcScroll(out AScroll: Integer);
+    procedure FilenameEditAccept(Sender: TObject);
+    procedure FilenameEditCancel(Sender: TObject);
+    procedure SetFilenameFocus(AFocused: Boolean);
 
     procedure ActivateSearch(ACh: TUTF8Char);
     procedure DeactivateSearch(AAccept: Boolean);
@@ -413,9 +408,8 @@ begin
   begin
     if FMode = fdSelectDir then
     begin
-      FFilename    := E.Name;
-      FFilenameCur := Length(FFilename) + 1;
-      FFocus       := fsFilename;
+      FFilenameEdit.Text := E.Name;
+      SetFilenameFocus(True);
       Invalidate;
     end
     else
@@ -423,9 +417,8 @@ begin
   end
   else
   begin
-    FFilename    := E.Name;
-    FFilenameCur := Length(FFilename) + 1;
-    FFocus       := fsFilename;
+    FFilenameEdit.Text := E.Name;
+    SetFilenameFocus(True);
     Invalidate;
   end;
 end;
@@ -433,8 +426,8 @@ end;
 procedure TFileDialog.HandleAccept;
 var FullPath: string;
 begin
-  if FFilename = '' then Exit;
-  FullPath := IncludeTrailingPathDelimiter(FCurrentDir) + FFilename;
+  if FFilenameEdit.Text = '' then Exit;
+  FullPath := IncludeTrailingPathDelimiter(FCurrentDir) + FFilenameEdit.Text;
   case FMode of
     fdOpen:      if not FileExists(FullPath)     then Exit;
     fdSave:      ;
@@ -461,37 +454,32 @@ begin
   else                        Result := 11;  { ' Filename: ' }
 end;
 
-procedure TFileDialog.FilenameCalcScroll(out AScroll: Integer);
-var FieldW: Integer;
+procedure TFileDialog.FilenameEditAccept(Sender: TObject);
 begin
-  FieldW  := Term.Width - FieldLabelWidth;
-  AScroll := 0;
-  if FFilenameCur - AScroll > FieldW then AScroll := FFilenameCur - FieldW;
-  if FFilenameCur - 1 < AScroll      then AScroll := FFilenameCur - 1;
-  if AScroll < 0 then AScroll := 0;
+  HandleAccept;
 end;
 
-procedure TFileDialog.FilenameInsert(ACh: TUTF8Char);
-begin Insert(string(ACh), FFilename, FFilenameCur); Inc(FFilenameCur, System.Length(string(ACh))); Invalidate; end;
-procedure TFileDialog.FilenameBackspace;
+procedure TFileDialog.FilenameEditCancel(Sender: TObject);
 begin
-  if FFilenameCur > 1 then
-  begin DeleteNeutral(FFilename, FFilenameCur-2, 1); Dec(FFilenameCur); Invalidate; end;
+  Close(1);   { Esc inside the field cancels the whole dialog (matches old behavior) }
 end;
-procedure TFileDialog.FilenameDelete;
-begin
-  if FFilenameCur <= Length(FFilename) then
-  begin DeleteNeutral(FFilename, FFilenameCur-1, 1); Invalidate; end;
-end;
-procedure TFileDialog.FilenameMoveLeft;
-begin if FFilenameCur > 1 then begin Dec(FFilenameCur); Invalidate; end; end;
-procedure TFileDialog.FilenameMoveRight;
-begin if FFilenameCur <= Length(FFilename) then begin Inc(FFilenameCur); Invalidate; end; end;
-procedure TFileDialog.FilenameHome;
-begin FFilenameCur := 1; Invalidate; end;
-procedure TFileDialog.FilenameEnd;
-begin FFilenameCur := Length(FFilename) + 1; Invalidate; end;
 
+procedure TFileDialog.SetFilenameFocus(AFocused: Boolean);
+begin
+  if AFocused then
+  begin
+    FFocus := fsFilename;
+    FFilenameEdit.BackColor := clBlue;
+    FFilenameEdit.ForeColor := clBrightWhite;
+    FFilenameEdit.GainFocus;
+  end
+  else
+  begin
+    FFilenameEdit.BackColor := clDefault;
+    FFilenameEdit.ForeColor := clDefault;
+    FFilenameEdit.LoseFocus;
+  end;
+end;
 { ── Inline search ── }
 
 function TFileDialog.DefaultExtension: string;
@@ -601,12 +589,23 @@ procedure TFileDialog.ArrangeChildren;
 const
   COMBO_W = 32;  { reserved width for the filter combo on the path row }
 var
-  ComboLeft: Integer;
+  ComboLeft, EditX, EditW, EditY: Integer;
 begin
-  if not Assigned(FFilterCombo) then Exit;
-  ComboLeft := Width - COMBO_W + 1;
-  if ComboLeft < 2 then ComboLeft := 2;
-  FFilterCombo.SetBounds(ComboLeft, 2, Width - ComboLeft + 1, 1);
+  if Assigned(FFilterCombo) then
+  begin
+    ComboLeft := Width - COMBO_W + 1;
+    if ComboLeft < 2 then ComboLeft := 2;
+    FFilterCombo.SetBounds(ComboLeft, 2, Width - ComboLeft + 1, 1);
+  end;
+
+  if Assigned(FFilenameEdit) then
+  begin
+    EditX := FieldLabelWidth + 1;
+    EditW := Width - FieldLabelWidth;
+    EditY := Height - 1;          { same row as the label, after it }
+    if EditW < 1 then EditW := 1;
+    FFilenameEdit.SetBounds(EditX, EditY, EditW, 1);
+  end;
 end;
 
 procedure TFileDialog.DrawPath;
@@ -730,13 +729,10 @@ begin
   end;
 end;
 
-procedure TFileDialog.DrawFilenameField;
-var
-  H, FieldW, Scroll: Integer;
-  VisStr: string;
+procedure TFileDialog.DrawFilenameLabel;
+var H: Integer;
 begin
-  H      := Term.Height;
-  FieldW := Term.Width - FieldLabelWidth;
+  H := Term.Height;
   DrawRule(H - 2, 1, Term.Width);
   Term.GotoXY(1, H - 1);
   Term.ClearToEOL;
@@ -745,10 +741,7 @@ begin
   if FMode = fdSelectDir then Term.WriteStr(' Directory: ')
   else                        Term.WriteStr(' Filename: ');
   Term.ResetColors;
-  FilenameCalcScroll(Scroll);
-  VisStr := CopyNeutral(FFilename, Scroll, FieldW);
-  Term.WriteStr(VisStr);
-  Term.ClearToEOL;
+  { The field itself is painted by the FFilenameEdit child after this. }
 end;
 
 procedure TFileDialog.DrawHintBar;
@@ -772,21 +765,13 @@ begin
 end;
 
 procedure TFileDialog.PlaceCursor;
-var Scroll, H: Integer;
 begin
-  case FFocus of
-    fsList:
-      if FSearchActive then
-        Term.GotoXY(3 + FSearchCursor, HEADER_ROWS + 1)
-      else if FSel >= 0 then
-        Term.GotoXY(1, HEADER_ROWS + 1 + (FSel - FTopRow));
-    fsFilename:
-      begin
-        FilenameCalcScroll(Scroll);
-        H := Term.Height;
-        Term.GotoXY(FieldLabelWidth + (FFilenameCur - Scroll), H - 1);
-      end;
-  end;
+  { Only the search overlay still needs a manually-placed cursor.  When the
+    filename edit owns focus, the child manages its own cursor in DoPaint. }
+  if (FFocus = fsList) and FSearchActive then
+    Term.GotoXY(3 + FSearchCursor, HEADER_ROWS + 1)
+  else if (FFocus = fsList) and (FSel >= 0) then
+    Term.GotoXY(1, HEADER_ROWS + 1 + (FSel - FTopRow));
 end;
 
 { ── DoPaint / DoKeyDown ── }
@@ -802,11 +787,14 @@ begin
     FFilterCombo.Paint;
   end;
   DrawList;
-  DrawFilenameField;
+  DrawFilenameLabel;
   DrawHintBar;
-  Term.ShowCursor;
-  PlaceCursor;
-  inherited DoPaint;
+  { When fsFilename has focus, the child paints itself (including positioning
+    its own cursor); otherwise hide the cursor — list/combo use background
+    highlights for focus feedback. }
+  if FFocus <> fsFilename then
+    Term.HideCursor;
+  inherited DoPaint;   { paints children, including FFilenameEdit }
 end;
 
 function TFileDialog.DoKeyDown(var Key: TKeyEvent): Boolean;
@@ -815,35 +803,34 @@ begin
 
   if FFocus = fsFilename then
   begin
+    { Focus-switching keys handled by the form; everything else goes to the
+      child edit (which owns text editing, cursor, accept/cancel events). }
     case Key.Code of
-      kcEscape:    Close(1);
-      kcEnter:     HandleAccept;
       kcTab:
         { Forward: fsFilename → fsFilterCombo → (land on fsList) }
         begin
+          SetFilenameFocus(False);
           if Assigned(FFilterCombo) then
           begin
             FFocus := fsFilterCombo;
             FFilterCombo.GainFocus;
             FFocus := fsList;  { always land on fsList going forward past combo }
-            Invalidate;
           end
           else
-            begin FFocus := fsList; Invalidate; end;
+            FFocus := fsList;
+          Invalidate;
         end;
-      kcShiftTab:  { Backward: fsFilename → fsList }
-        begin FFocus := fsList; Invalidate; end;
-      kcUp:        begin FFocus := fsList; Invalidate; end;
-      kcDown:      begin FFocus := fsList; Invalidate; end;
-      kcLeft:      FilenameMoveLeft;
-      kcRight:     FilenameMoveRight;
-      kcHome:      FilenameHome;
-      kcEnd:       FilenameEnd;
-      kcBackspace: FilenameBackspace;
-      kcDelete:    FilenameDelete;
-      kcChar:      if Key.Ch >= ' ' then FilenameInsert(Key.Ch);
+      kcShiftTab,
+      kcUp,
+      kcDown:
+        begin
+          SetFilenameFocus(False);
+          FFocus := fsList;
+          Invalidate;
+        end;
     else
-      Result := False;
+      Result := FFilenameEdit.KeyDown(Key);
+      if Result then Invalidate;
     end;
     Exit;
   end;
@@ -872,21 +859,19 @@ begin
             if (FSel >= 0) and (FSel < FDisplayCount) and
                not FDisplay[FSel].IsDir then
             begin
-              FFilename    := ApplyWantExtension(FDisplay[FSel].Name);
-              FFilenameCur := Length(FFilename) + 1;
-              FFocus       := fsFilename;
+              FFilenameEdit.Text := ApplyWantExtension(FDisplay[FSel].Name);
+              SetFilenameFocus(True);
             end;
           end
           else if FMode = fdSave then
           begin
             { No match in a Save dialog → use typed text as filename }
-            FFilename    := ApplyWantExtension(FSearchText);
-            FFilenameCur := Length(FFilename) + 1;
+            FFilenameEdit.Text := ApplyWantExtension(FSearchText);
             FSearchActive := False;
             FSearchText   := '';
             FSel          := FSearchPrevSel;
             EnsureSelVisible;
-            FFocus := fsFilename;
+            SetFilenameFocus(True);
           end
           else
             DeactivateSearch(False);  { no match in Open — just cancel search }
@@ -983,7 +968,7 @@ begin
     kcEnter: SelectCurrent;
     kcTab:
       { Forward: fsList → fsFilename }
-      begin FFocus := fsFilename; Invalidate; end;
+      begin SetFilenameFocus(True); Invalidate; end;
     kcShiftTab:
       { Backward: fsList → fsFilterCombo → (land on fsFilename) }
       begin
@@ -991,11 +976,11 @@ begin
         begin
           FFocus := fsFilterCombo;
           FFilterCombo.GainFocus;
-          FFocus := fsFilename;  { always land on fsFilename going backward past combo }
+          SetFilenameFocus(True);   { always land on fsFilename going backward past combo }
           Invalidate;
         end
         else
-          begin FFocus := fsFilename; Invalidate; end;
+          begin SetFilenameFocus(True); Invalidate; end;
       end;
 
     kcLeft:
@@ -1011,9 +996,8 @@ begin
             NavigateInto(FDisplay[FSel].Name)
           else
           begin
-            FFilename    := ApplyWantExtension(FDisplay[FSel].Name);
-            FFilenameCur := Length(FFilename) + 1;
-            FFocus       := fsFilename;
+            FFilenameEdit.Text := ApplyWantExtension(FDisplay[FSel].Name);
+            SetFilenameFocus(True);
             Invalidate;
           end;
         end;
@@ -1042,8 +1026,18 @@ constructor TFileDialog.Create(const ATitle: string);
 begin
   inherited Create(ATitle);
   FFileFilter  := '*';
-  FFilenameCur := 1;
   FFocus       := fsList;
+
+  FFilenameEdit          := TTextEdit.Create;
+  FFilenameEdit.OnAccept := @FilenameEditAccept;
+  FFilenameEdit.OnCancel := @FilenameEditCancel;
+  { Start unfocused — list owns initial focus. }
+  FFilenameEdit.ShowCursor := False;
+  AddChild(FFilenameEdit);
+
+  { TForm.Create already fired ArrangeChildren via SetBounds, but
+    FFilenameEdit didn't exist yet.  Re-arrange now that it does. }
+  ArrangeChildren;
 end;
 
 destructor TFileDialog.Destroy;
@@ -1058,8 +1052,7 @@ begin
   FMode        := AMode;
   FAccepted    := False;
   FResultPath  := '';
-  FFilename    := AInitialFilename;
-  FFilenameCur := Length(FFilename) + 1;
+  FFilenameEdit.Text := AInitialFilename;
   FSel         := 0;
   FTopRow      := 0;
   FFocus       := fsList;

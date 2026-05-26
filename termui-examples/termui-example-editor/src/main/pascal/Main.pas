@@ -42,7 +42,8 @@ uses
   TermUI.Highlighter.Pascal,
   TermUI.Highlighter.AsciiDoc,
   TermUI.Highlighter.XML,
-  TermUI.Highlighter.Markdown;
+  TermUI.Highlighter.Markdown,
+  TermUI.Highlighter.Diff;
 
 const
   HINT_ROWS = 1;
@@ -87,21 +88,48 @@ type
 
 { ── helpers ── }
 
-function AskYesNo(const APrompt: string): Boolean;
+{ Prompt with a Y/N question.  ADefault is the answer used when the user
+  presses Enter (or Escape — Escape cancels back to the same value).
+  Capitalised letter in the prompt indicates the default. }
+function AskYesNo(const APrompt: string; ADefault: Boolean = True): Boolean;
 var
   Key: TKeyEvent;
+  Msg: string;
+  Pad: Integer;
+  Done: Boolean;
 begin
+  if ADefault then
+    Msg := APrompt + ' (y/n) [Y] '
+  else
+    Msg := APrompt + ' (y/n) [N] ';
+
   Term.GotoXY(1, Term.Height - 2);
   Term.ResetColors;
   Term.SetFG(clYellow);
-  Term.WriteStr(APrompt + ' [Y/N] ');
+  Term.WriteStr(Msg);
   Term.ResetColors;
+  Pad := Term.Width - Length(Msg);
+  if Pad > 0 then Term.WriteStr(StringOfChar(' ', Pad));
+  Term.PlaceCursor(Length(Msg) + 1, Term.Height - 2);
   Term.ShowCursor;
+  Term.FlushOutput;
+
+  Result := ADefault;
+  Done   := False;
   repeat
     Term.ReadKeyTimeout(Key, -1);
-  until Key.Code in [kcChar, kcEscape, kcEnter];
+    case Key.Code of
+      kcEnter, kcEscape:
+        begin Result := ADefault; Done := True; end;
+      kcChar:
+        case UpCase(Key.Ch) of
+          'Y': begin Result := True;  Done := True; end;
+          'N': begin Result := False; Done := True; end;
+        end;
+    end;
+  until Done;
+
   Term.HideCursor;
-  Result := (Key.Code = kcChar) and (UpCase(Key.Ch) = 'Y');
 end;
 
 { ── TEditorForm ── }

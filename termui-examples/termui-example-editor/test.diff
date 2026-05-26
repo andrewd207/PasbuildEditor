@@ -1,0 +1,8 @@
+diff --git a/foo b/foo
+--- a/foo
++++ b/foo
+@@ -1,3 +1,3 @@
+ unchanged before
+-APP_VERSION = '1.0.0';
++APP_VERSION = '${project.version}';
+ unchanged after

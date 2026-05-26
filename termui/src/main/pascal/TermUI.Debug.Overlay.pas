@@ -156,7 +156,7 @@ var
 begin
   W      := Term.Width;
   H      := Term.Height;
-  PanelW := Min(FWidth, W);
+  PanelW := Max(Min(FWidth, W), W * 3 div 4);
   PanelL := W - PanelW + 1;
   InnerW := PanelW - 2;
   MaxRows := H - 2;  { rows available for log lines }

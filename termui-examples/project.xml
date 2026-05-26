@@ -16,5 +16,6 @@
     <module>termui-example-propeditor</module>
     <module>termui-example-completion</module>
     <module>termui-example-editor-completion</module>
+    <module>termui-example-colorpicker</module>
   </modules>
 </project>

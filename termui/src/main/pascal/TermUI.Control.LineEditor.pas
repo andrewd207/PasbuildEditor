@@ -119,6 +119,11 @@ begin
   ClampScroll;
   GotoLocal(1, 1);
 
+  { Background is honored for the whole field (text + padding) so callers can
+    flip a focus highlight by setting BackColor.  Foreground is set per-state
+    below — placeholder forces clBrightBlack regardless of ForeColor. }
+  Term.SetBG(BackColor);
+
   if (FBuf = '') and (FPlaceholder <> '') then
   begin
     Term.SetFG(clBrightBlack);
@@ -126,14 +131,13 @@ begin
   end
   else if FPasswordChar <> #0 then
   begin
-    Term.ResetColors;
-    { Build a mask the same char length as FBuf, then scroll it }
+    Term.SetFG(ForeColor);
     Display := CopyNeutral(
       StringOfChar(FPasswordChar, FBuf.Length), FScroll, Width);
   end
   else
   begin
-    Term.ResetColors;
+    Term.SetFG(ForeColor);
     Display := CopyNeutral(FBuf, FScroll, Width);
   end;
 

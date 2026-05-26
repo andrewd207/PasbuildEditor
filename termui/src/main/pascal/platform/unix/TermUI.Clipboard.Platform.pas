@@ -641,6 +641,15 @@ begin
     Exit;
   end;
 
+  { Put the read end in non-blocking mode so DrainWakePipe never blocks
+    on an empty pipe.  Without this, the second FpRead in the drain loop
+    waits forever and the destructor's FThread.WaitFor hangs the process
+    at finalization time.  The actual idle-sleep lives in PollEvents
+    (select() with a 200 ms timeout); the drain only runs after select
+    reports data, then exits the moment the pipe is empty. }
+  FpFcntl(FState.WakePipe[0], F_SetFl,
+          FpFcntl(FState.WakePipe[0], F_GetFl) or O_NONBLOCK);
+
   FThread        := TX11Thread.Create(True);
   FThread.FLib   := FLib;
   FThread.FDpy   := FDpy;
