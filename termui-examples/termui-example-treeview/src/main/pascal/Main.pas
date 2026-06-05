@@ -117,7 +117,9 @@ end;
 
 procedure TTreeForm.OnExpanding(Sender: TObject; Node: TTreeNode; var DoExpand: Boolean);
 begin
-  { Simulate lazy-loading the bin/ directory }
+  { Only lazy-load nodes that haven't been loaded yet (e.g. bin/).
+    Leaves like file nodes are already Loaded := True and must not gain children. }
+  if Node.Loaded then Exit;
   Node.AddChild('myapp');
   Node.AddChild('myapp.dbg');
   Node.Loaded := True;

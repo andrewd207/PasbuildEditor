@@ -502,6 +502,15 @@ begin
     FOnExpanding(Self, Node, Allow);
   if not Allow then Exit;
 
+  { If the handler chose not to populate the node, treat it as a leaf:
+    mark it loaded but don't flip Expanded (nothing to show). }
+  if Node.ChildCount = 0 then
+  begin
+    Node.FLoaded := True;
+    Invalidate;
+    Exit;
+  end;
+
   Node.FExpanded := True;
   Node.FLoaded   := True;
 
