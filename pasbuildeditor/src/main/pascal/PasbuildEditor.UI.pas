@@ -52,6 +52,7 @@ type
   TAppDriver = class
   private
     FCtx: TUIContext;
+    FInside: Boolean;
   public
     constructor Create(ACtx: TUIContext);
     procedure OnIdle(Sender: TObject);
@@ -65,8 +66,18 @@ end;
 
 procedure TAppDriver.OnIdle(Sender: TObject);
 begin
-  RunProjectUI(FCtx);
-  Application.Terminate;
+  { Guard against re-entry: ProcessMessages keeps firing OnIdle inside any
+    nested ShowModal loop, which would otherwise rebuild the UI from scratch
+    on every idle tick. After a crash, Application.Run re-enters this handler
+    naturally — the guard unwinds via the finally so recovery still works. }
+  if FInside then Exit;
+  FInside := True;
+  try
+    RunProjectUI(FCtx);
+    Application.Terminate;
+  finally
+    FInside := False;
+  end;
 end;
 
 { Delegate semver helpers to Dialog.PackageSearch }
