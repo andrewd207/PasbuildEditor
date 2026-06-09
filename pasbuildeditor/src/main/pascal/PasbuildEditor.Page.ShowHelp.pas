@@ -10,7 +10,7 @@
 unit PasbuildEditor.Page.ShowHelp;
 
 {$mode objfpc}{$H+}
-{$R '../resources/help/help.rc'}
+{$R '../resources/help/help.res'}
 
 interface
 
